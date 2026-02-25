@@ -1,168 +1,313 @@
 #include "AST.h"
+
 #include <cctype>
-#include <iostream>
+#include <cstdint>
+#include <memory>
+#include <stack>
 #include <stdexcept>
-#include <vector>
+#include <string>
+#include <utility>
 
-// AST node constructors and tokenizer implementation
-// For number nodes, left and right are not used, so we can set them to nullptr
-Node::Node(std::int64_t v) : type(NodeType::Number), value(v) {}
+// MARK: namespace
+namespace AST_Details {
 
-// For operator nodes, value is not used, so we can set it to 0
-// Node::Node(NodeType t, std::unique_ptr<Node> l, std::unique_ptr<Node> r)
-//     : type(t), value(0), left(std::move(l)), right(std::move(r)) {}
+class ASTException : public std::runtime_error {
+  public:
+    using std::runtime_error::runtime_error;
+};
+
+/**
+ * @brief Returns the precedence of the given operator token.
+ * @param t The operator token type to get the precedence of.
+ * @return The precedence of the given operator token. Higher number means
+ * higher precedence. Returns -1 if the token is not an operator.
+ */
+int get_precedence(TokenType t) {
+    switch (t) {
+    case TokenType::Mult:
+        return 2;
+    case TokenType::Plus:
+    case TokenType::Minus:
+        return 1;
+    default:
+        return -1;
+    }
+}
+
+/**
+ * @brief Converts an operator token type to the corresponding node type.
+ * @param t The operator token type to convert.
+ * @return The corresponding node type for the given operator token type.
+ */
+NodeType token_type_to_node_type(TokenType t) {
+    switch (t) {
+    case TokenType::Plus:
+        return NodeType::Add;
+    case TokenType::Minus:
+        return NodeType::Sub;
+    case TokenType::Mult:
+        return NodeType::Mult;
+    default:
+        throw ASTException("unexpected operator token");
+    }
+}
+
+/**
+ * @brief Returns whether the given token type is a binary operator.
+ * @param t The token type to check.
+ * @return true if the given token type is a binary operator, false otherwise.
+ */
+bool is_arithmetic_operator(TokenType t) {
+    return t == TokenType::Plus || t == TokenType::Minus ||
+           t == TokenType::Mult;
+}
+
+/**
+ * @brief Parses a number from the input string starting at the given index,
+ * and advances the index to the first character after the number.
+ * @param input_string The input string to parse the number from.
+ * @param index The index to start parsing from. Will be advanced to the first
+ * character after the number. (size_t is an integer made just for storing the
+ * size of things).
+ * @return The parsed number.
+ */
+int64_t parse_number(const std::string& input_string, std::size_t& index) {
+    int64_t parsed_number = 0;
+    while (index < input_string.size()) {
+        // If conversion fails, break.
+        if (const auto input_digit_char =
+                static_cast<unsigned char>(input_string[index]);
+            !std::isdigit(input_digit_char)) {
+            break;
+        }
+        // Doing "- '0'" to a character that's a digit gives you the actual
+        // integer value. E.g. '3' - '0' = 3.
+        int64_t digit_value = input_string[index] - '0';
+        // Since we're parsing each digit from left to right →, we wanna move
+        // the digits we've already parsed by one place when we add the newest
+        // digit.
+        parsed_number = parsed_number * 10 + digit_value;
+        ++index;
+    }
+    return parsed_number;
+}
+
+/**
+ * @brief Pops the top operator from the operator stack, pops the top two
+ * values from the value stack, applies the operator to the values, and pushes
+ * the result back onto the value stack.
+ * @param value_stack The stack of values to pop the operands from and push the
+ * result onto.
+ * @param operator_stack The stack of operators to pop the operator from.
+ */
+void apply_top_operator(std::stack<std::unique_ptr<Node>>& value_stack,
+                        std::stack<TokenType>& operator_stack) {
+    if (operator_stack.empty()) {
+        throw ASTException("missing operator");
+    }
+    if (value_stack.size() < 2) {
+        throw ASTException("missing operand");
+    }
+
+    const TokenType current_operator = operator_stack.top();
+    operator_stack.pop();
+
+    auto right_hand_side = std::move(value_stack.top());
+    value_stack.pop();
+    auto left_hand_side = std::move(value_stack.top());
+    value_stack.pop();
+
+    value_stack.push(std::make_unique<Node>(
+        token_type_to_node_type(current_operator), std::move(left_hand_side),
+        std::move(right_hand_side)));
+}
+
+/**
+ * @brief Handles an operator token by popping and applying operators from the
+ * operator stack until we find an operator with lower precedence.
+ * @param token_type The type of the operator token we're handling.
+ */
+void handle_operator(TokenType token_type,
+                     std::stack<std::unique_ptr<Node>>& value_stack,
+                     std::stack<TokenType>& operator_stack) {
+    while (!operator_stack.empty() &&
+           operator_stack.top() != TokenType::LParen &&
+           get_precedence(operator_stack.top()) >= get_precedence(token_type)) {
+        apply_top_operator(value_stack, operator_stack);
+    }
+    operator_stack.push(token_type);
+}
+
+} // namespace AST_Details
+
+// ---------------------------- Node constructors ----------------------------
+// Constructor for number nodes.
+Node::Node(int64_t v)
+    : type(NodeType::Number), value(v), left(nullptr), right(nullptr) {}
+
+// Constructor for operator nodes.
 Node::Node(NodeType t, std::unique_ptr<Node> l, std::unique_ptr<Node> r)
     : type(t), value(0), left(std::move(l)), right(std::move(r)) {}
 
-class AST {
-  private:
-    std::unique_ptr<Node> root_;
+// MARK: AST
+// ----------------------------------- AST -----------------------------------
 
-    static int precedence(TokenType t) {
-        switch (t) {
-        case TokenType::Mult:
-            return 2;
-        case TokenType::Plus:
-            return 1;
-        case TokenType::Minus:
-            return 1;
-        default:
-            return -1;
-        }
-    }
+/**
+ * @brief Clears the AST by resetting the root and clearing the tokens_ vector.
+ */
+void AST::clear() {
+    root_.reset();
+    tokens_.clear();
+}
 
-    static NodeType to_node_type(TokenType t) {
-        switch (t) {
-        case TokenType::Plus:
-            return NodeType::Add;
-        case TokenType::Minus:
-            return NodeType::Sub;
-        case TokenType::Mult:
-            return NodeType::Mult;
-        default:
-            throw std::runtime_error("unexpected operator token");
-        }
-    }
+/**
+ * @brief Tokenizes the input string into a vector of tokens, which are stored
+ * in the tokens_ field.
+ * @param input_string The input string to tokenize.
+ */
+void AST::tokenize(const std::string& input_string) {
+    tokens_.clear();
 
-  public:
-    std::vector<Token> tokens;
+    std::size_t i = 0;
+    while (i < input_string.size()) {
+        const auto input_char = static_cast<unsigned char>(input_string[i]);
 
-    void rotate_left(Node* old_parent) {
-        if (old_parent->left == nullptr) {
-            auto new_node = std::make_unique<Node>();
-            new_node->value = old_parent->value;
-            old_parent->value = old_parent->left->value;
-        }
-    }
-
-    void add_node_to_tree(Node* node_to_add_to,
-                          std::unique_ptr<Node> new_node) {
-        if (new_node->type == NodeType::Number) {
-            if (node_to_add_to->left == nullptr) {
-                node_to_add_to->left = std::move(new_node);
-            } else if (node_to_add_to->right == nullptr) {
-                node_to_add_to->right = std::move(new_node);
-            } else {
-                add_node_to_tree(node_to_add_to->right.get(),
-                                 std::move(new_node));
-            }
-        } else {
-            if (node_to_add_to->right == nullptr) {
-                node_to_add_to->right = std::move(new_node);
-                if (node_to_add_to->type == NodeType::Number &&
-                    new_node->type != NodeType::Number) {
-                    rotate_left(node_to_add_to);
-                }
-            } else {
-                add_node_to_tree(node_to_add_to->right.get(),
-                                 std::move(new_node));
-            }
-        }
-    }
-
-    void add_tokens_to_tree() {
-        for (Token curr_token : tokens) {
-            if (curr_token.type == TokenType::Number) {
-                auto new_node = std::make_unique<Node>(curr_token.value);
-                add_node_to_tree(root_.get(), std::move(new_node));
-            } else if (curr_token.type == TokenType::Plus) {
-                auto new_node =
-                    std::make_unique<Node>(NodeType::Add, nullptr, nullptr);
-                add_node_to_tree(root_.get(), std::move(new_node));
-            } else if (curr_token.type == TokenType::Minus) {
-                auto new_node =
-                    std::make_unique<Node>(NodeType::Sub, nullptr, nullptr);
-                add_node_to_tree(root_.get(), std::move(new_node));
-            } else if (curr_token.type == TokenType::Mult) {
-                auto new_node =
-                    std::make_unique<Node>(NodeType::Mult, nullptr, nullptr);
-                add_node_to_tree(root_.get(), std::move(new_node));
-            } else {
-                throw std::runtime_error("unexpected token type");
-            }
-        }
-    }
-
-    // Tokenizer
-    void tokenize(const std::string& s) {
-        for (std::size_t i = 0; i < s.size();) {
-            if (std::isspace(static_cast<unsigned char>(s[i]))) {
-                ++i;
-                continue;
-            }
-            if (std::isdigit(static_cast<unsigned char>(s[i]))) {
-                std::int64_t value = 0;
-                while (i < s.size() &&
-                       std::isdigit(static_cast<unsigned char>(s[i]))) {
-                    value = value * 10 + (s[i] - '0');
-                    ++i;
-                }
-                tokens.push_back({TokenType::Number, value});
-                continue;
-            }
-            switch (s[i]) {
-            case '+':
-                tokens.push_back({TokenType::Plus, 0});
-                break;
-            case '-':
-                tokens.push_back({TokenType::Minus, 0});
-                break;
-            case '*':
-                tokens.push_back({TokenType::Mult, 0});
-                break;
-            case '(':
-                tokens.push_back({TokenType::LParen, 0});
-                break;
-            case ')':
-                tokens.push_back({TokenType::RParen, 0});
-                break;
-            default:
-                throw std::runtime_error("invalid character");
-            }
+        if (std::isspace(input_char)) {
             ++i;
+            continue;
         }
-        tokens.push_back({TokenType::End, 0});
+
+        if (std::isdigit(input_char)) {
+            int64_t parsed_number = AST_Details::parse_number(input_string, i);
+            tokens_.push_back(Token{TokenType::Number, parsed_number});
+            continue;
+        }
+
+        TokenType type;
+        switch (input_string[i]) {
+        case '+':
+            type = TokenType::Plus;
+            break;
+        case '-':
+            type = TokenType::Minus;
+            break;
+        case '*':
+            type = TokenType::Mult;
+            break;
+        case '(':
+            type = TokenType::LParen;
+            break;
+        case ')':
+            type = TokenType::RParen;
+            break;
+        default:
+            throw AST_Details::ASTException("invalid character in expression");
+        }
+
+        tokens_.push_back(Token{type, 0});
+        ++i;
     }
-};
 
-int main() {
-    // std::string input;
-    // std::getline(std::cin, input);
-    // AST my_ast;
-    // my_ast.tokenize(input);
+    tokens_.push_back(Token{TokenType::End, 0});
+}
 
-    // for (const auto& t : my_ast.tokens) {
-    //     if (t.type == TokenType::Number) {
-    //         std::cout << "NUMBER " << t.value << "\n";
-    //     } else {
-    //         std::cout << "TOKEN\n";
-    //     }
-    // }
-    auto node_l1 =
-        std::make_unique<Node>(NodeType::Add, std::make_unique<Node>(3),
-                               std::make_unique<Node>(4)); // 3+4=7
-    auto root_node =
-        std::make_unique<Node>(NodeType::Add, std::make_unique<Node>(3),
-                               std::move(node_l1)); // 3+7=10
-    std::cout << "The value of root_node:" << root_node->get_value();
+/**
+ * @brief Converts the tokens we've tokenized into an AST, and stores the
+ * root in the root_ field.
+ *
+ * This is done using the "shunting yard algorithm", which uses the
+ * operator_stack_ and value_stack_ to maintain the current state of the
+ * conversion.
+ */
+void AST::add_tokens_to_tree() {
+    root_.reset();
+
+    std::stack<std::unique_ptr<Node>> value_stack;
+    std::stack<TokenType> operator_stack;
+
+    for (const Token& current_token : tokens_) {
+        if (current_token.type == TokenType::Number) {
+            value_stack.push(std::make_unique<Node>(current_token.value));
+            continue;
+        }
+
+        if (current_token.type == TokenType::LParen) {
+            operator_stack.push(current_token.type);
+            continue;
+        }
+
+        if (current_token.type == TokenType::RParen) {
+            while (!operator_stack.empty() &&
+                   operator_stack.top() != TokenType::LParen) {
+                AST_Details::apply_top_operator(value_stack, operator_stack);
+            }
+            if (operator_stack.empty()) {
+                throw AST_Details::ASTException("mismatched ')'");
+            }
+            operator_stack.pop(); // discard '('
+            continue;
+        }
+
+        if (AST_Details::is_arithmetic_operator(current_token.type)) {
+            AST_Details::handle_operator(current_token.type, value_stack,
+                                         operator_stack);
+            continue;
+        }
+
+        if (current_token.type == TokenType::End) {
+            break;
+        }
+
+        throw AST_Details::ASTException("unexpected token");
+    }
+
+    while (!operator_stack.empty()) {
+        if (operator_stack.top() == TokenType::LParen) {
+            throw AST_Details::ASTException("mismatched '('");
+        }
+        AST_Details::apply_top_operator(value_stack, operator_stack);
+    }
+
+    if (value_stack.size() != 1) {
+        throw AST_Details::ASTException("invalid expression");
+    }
+
+    root_ = std::move(value_stack.top());
+    value_stack.pop();
+}
+
+/**
+ * @brief Parses the input string into an AST by first tokenizing it and then
+ * converting the tokens into a tree. The resulting AST is stored in the root_
+ * field.
+ * @param input_expression The input string to parse into an AST.
+ */
+void AST::parse(const std::string& input_expression) {
+    clear();
+    tokenize(input_expression);
+    add_tokens_to_tree();
+}
+
+/**
+ * @brief Evaluates the AST by calling get_value() on the root node, which
+ * recursively evaluates the entire tree and returns the result.
+ * @return The result of evaluating the AST.
+ */
+int64_t AST::evaluate() {
+    if (!root_) {
+        throw AST_Details::ASTException("tree is empty");
+    }
+    return root_->get_value();
+}
+
+Node* AST::root() {
+    return root_.get();
+}
+
+const Node* AST::root() const {
+    return root_.get();
+}
+
+const std::vector<Token>& AST::tokens() const {
+    return tokens_;
 }

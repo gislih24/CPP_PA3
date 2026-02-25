@@ -1,15 +1,18 @@
 #pragma once
+#include <cstdint>
 #include <memory>
+#include <string>
+#include <vector>
 
 enum class NodeType { Number, Add, Sub, Mult };
 
 struct Node {
     NodeType type;
-    std::int64_t value; // lets allow large integers cause why not
+    int64_t value; // lets allow large integers cause why not
     std::unique_ptr<Node> left;
     std::unique_ptr<Node> right;
 
-    std::int64_t get_value() {
+    int64_t get_value() {
         if (type == NodeType::Number) {
             return value;
         } else if (type == NodeType::Add) {
@@ -29,7 +32,7 @@ struct Node {
         return value;
     }
 
-    Node(std::int64_t v);
+    Node(int64_t v);
     Node(NodeType t, std::unique_ptr<Node> l, std::unique_ptr<Node> r);
 };
 
@@ -37,5 +40,22 @@ enum class TokenType { Number, Plus, Minus, Mult, LParen, RParen, End };
 
 struct Token {
     TokenType type;
-    long long value;
+    int64_t value;
+};
+
+class AST {
+  public:
+    void clear();
+    void tokenize(const std::string& input);
+    void add_tokens_to_tree();
+    void parse(const std::string& input);
+    int64_t evaluate();
+
+    Node* root();
+    const Node* root() const;
+    const std::vector<Token>& tokens() const;
+
+  private:
+    std::unique_ptr<Node> root_;
+    std::vector<Token> tokens_;
 };
