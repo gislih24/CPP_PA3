@@ -109,33 +109,46 @@ void apply_top_operator(std::stack<std::unique_ptr<Node>>& value_stack,
         throw ASTException("missing operand");
     }
 
+    // The operation we want to do is essentially:
+    // <left_hand_side_value> <operator> <right_hand_side_value>
+    // Get the current operator.
     const TokenType current_operator = operator_stack.top();
     operator_stack.pop();
 
-    auto right_hand_side = std::move(value_stack.top());
+    // Get the values we want to apply the operation to.
+    auto right_hand_side_value = std::move(value_stack.top());
     value_stack.pop();
-    auto left_hand_side = std::move(value_stack.top());
+    auto left_hand_side_value = std::move(value_stack.top());
     value_stack.pop();
 
+    // Create a new node, with:
     value_stack.push(std::make_unique<Node>(
-        token_type_to_node_type(current_operator), std::move(left_hand_side),
-        std::move(right_hand_side)));
+        token_type_to_node_type(current_operator),
+        std::move(left_hand_side_value), std::move(right_hand_side_value)));
 }
 
 /**
- * @brief Handles an operator token by popping and applying operators from the
- * operator stack until we find an operator with lower precedence.
- * @param token_type The type of the operator token we're handling.
+ * @brief Helper function that handles an operator token by popping and
+ * applying operators from the operator stack until we find an operator with
+ * lower precedence.
+ * @param op_token_type The type of the operator token we're handling.
  */
-void handle_operator(TokenType token_type,
+void handle_operator(TokenType op_token_type,
                      std::stack<std::unique_ptr<Node>>& value_stack,
                      std::stack<TokenType>& operator_stack) {
-    while (!operator_stack.empty() &&
-           operator_stack.top() != TokenType::LParen &&
-           get_precedence(operator_stack.top()) >= get_precedence(token_type)) {
+    // While: the stack isn't empty,
+    // and the top token isn't a '(',
+    // and the top operator has a greater precedence than our operator,
+    while ((!operator_stack.empty()) &&
+           (operator_stack.top() != TokenType::LParen) &&
+           (get_precedence(operator_stack.top()) >=
+            get_precedence(op_token_type))) {
+        // apply the top operator to the top 2 values of the value stack.
         apply_top_operator(value_stack, operator_stack);
     }
-    operator_stack.push(token_type);
+    // Finally, after applying all operators with higher precedence, we can
+    // push our operator.
+    operator_stack.push(op_token_type);
 }
 
 } // namespace AST_Details
@@ -166,23 +179,31 @@ void AST::clear() {
  * @param input_string The input string to tokenize.
  */
 void AST::tokenize(const std::string& input_string) {
-    tokens_.clear();
+    tokens_.clear(); // Clear the tokens first.
 
+    // size_t is used here since it's a type that's guaranteed to be able to
+    // represent the size of any object in memory.
     std::size_t i = 0;
+    // Go through the characters of the string.
     while (i < input_string.size()) {
+        // Convert the current character. unsigned char is used here for extra
+        // safety.
         const auto input_char = static_cast<unsigned char>(input_string[i]);
 
+        // Ignore whitespace.
         if (std::isspace(input_char)) {
             ++i;
             continue;
         }
-
+        // If it's a digit, we have a number, so we try to parse that, along
+        // with the rest of the digits of this number.
         if (std::isdigit(input_char)) {
             int64_t parsed_number = AST_Details::parse_number(input_string, i);
             tokens_.push_back(Token{TokenType::Number, parsed_number});
             continue;
         }
 
+        // If it's a token, try to parse it.
         TokenType type;
         switch (input_string[i]) {
         case '+':
@@ -204,11 +225,12 @@ void AST::tokenize(const std::string& input_string) {
             throw AST_Details::ASTException("invalid character in expression");
         }
 
+        // Push the operator token, with the value 0 (since it's an operator).
         tokens_.push_back(Token{type, 0});
         ++i;
     }
 
-    tokens_.push_back(Token{TokenType::End, 0});
+    tokens_.push_back(Token{TokenType::End, 0}); // Push the end token.
 }
 
 /**
@@ -222,10 +244,13 @@ void AST::tokenize(const std::string& input_string) {
 void AST::add_tokens_to_tree() {
     root_.reset();
 
-    std::stack<std::unique_ptr<Node>> value_stack;
+    // Initialize our stacks.
+    std::stack<std::unique_ptr<Node>> value_stack; // The stack of values.
     std::stack<TokenType> operator_stack;
 
+    // Iterate through all the tokens.
     for (const Token& current_token : tokens_) {
+        // If we have a number token, push it onto the value stack.
         if (current_token.type == TokenType::Number) {
             value_stack.push(std::make_unique<Node>(current_token.value));
             continue;
@@ -237,17 +262,23 @@ void AST::add_tokens_to_tree() {
         }
 
         if (current_token.type == TokenType::RParen) {
+            // While we don't find a '(', we apply the top operator to the top
+            // 2 values of the value stack.
             while (!operator_stack.empty() &&
                    operator_stack.top() != TokenType::LParen) {
                 AST_Details::apply_top_operator(value_stack, operator_stack);
             }
+            // If we run out of operators before finding a '(', then we have a
+            // mismatched parentheses error.
             if (operator_stack.empty()) {
                 throw AST_Details::ASTException("mismatched ')'");
             }
-            operator_stack.pop(); // discard '('
+            // Finally, pop the '(' from the operator stack and discard it.
+            operator_stack.pop();
             continue;
         }
 
+        // Handle the case if we have an arithmetic operator.
         if (AST_Details::is_arithmetic_operator(current_token.type)) {
             AST_Details::handle_operator(current_token.type, value_stack,
                                          operator_stack);
@@ -258,9 +289,13 @@ void AST::add_tokens_to_tree() {
             break;
         }
 
+        // If we have a token that's not a number, operator, or parentheses,
+        // then we have an unexpected token error.
         throw AST_Details::ASTException("unexpected token");
     }
 
+    // While the operator stack isn't empty, apply the top operator to the top
+    // 2 values of the value stack.
     while (!operator_stack.empty()) {
         if (operator_stack.top() == TokenType::LParen) {
             throw AST_Details::ASTException("mismatched '('");
@@ -268,10 +303,14 @@ void AST::add_tokens_to_tree() {
         AST_Details::apply_top_operator(value_stack, operator_stack);
     }
 
+    // At this point, the operator stack should be empty, and the value stack
+    // should have exactly 1 value (the root of the AST). Otherwise, we have an
+    // error.
     if (value_stack.size() != 1) {
         throw AST_Details::ASTException("invalid expression");
     }
 
+    // Set the root of the AST to the only value left on the value stack.
     root_ = std::move(value_stack.top());
     value_stack.pop();
 }
@@ -300,14 +339,17 @@ int64_t AST::evaluate() {
     return root_->get_value();
 }
 
+// Getter for root_ (because might need to be accessed afterwards).
 Node* AST::root() {
     return root_.get();
 }
 
+// Const getter for root_.
 const Node* AST::root() const {
     return root_.get();
 }
 
+// Const getter for tokens_.
 const std::vector<Token>& AST::tokens() const {
     return tokens_;
 }
