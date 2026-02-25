@@ -234,11 +234,11 @@ void AST::tokenize(const std::string& input_string) {
 }
 
 /**
- * @brief Converts the tokens we've tokenized into an AST, and stores the
- * root in the root_ field.
+ * @brief Converts the tokens we've tokenized into an AST, and stores the root
+ * in the root_ field.
  *
  * This is done using the "shunting yard algorithm", which uses the
- * operator_stack_ and value_stack_ to maintain the current state of the
+ * operator_stack and value_stack to maintain the current state of the
  * conversion.
  */
 void AST::add_tokens_to_tree() {
