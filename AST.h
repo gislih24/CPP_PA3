@@ -24,6 +24,7 @@ struct Node {
         } else {
             return 0;
         }
+        // I think everything after this line never runs
         type = NodeType::Number;
         // Since we're using unique_ptr, this will automatically delete the
         // left node, since nothing is pointing to it.
