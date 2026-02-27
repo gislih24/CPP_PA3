@@ -271,8 +271,8 @@ void AST::tokenize(const std::string& input_string) {
         // If it's a lower-case letter, parse a variable name [a-z]+.
         if (std::islower(curr_char)) {
             std::string parsed_variable = parse_variable_name(input_string, i);
-            tokens_.emplace_back(TokenType::Variable, 0,
-                                 std::move(parsed_variable));
+            tokens_.emplace_back(TokenType::Variable, 0, std::move(parsed_variable));
+            expecting_operand = false;
             continue;
         }
 
