@@ -242,15 +242,15 @@ void AST::tokenize(const std::string& input_string) {
                     static_cast<unsigned char>(input_string[lookahead]))) {
                 i = lookahead;
                 int64_t parsed_number = parse_number(input_string, i);
-                tokens_.push_back(Token{TokenType::Number, -parsed_number});
+                tokens_.emplace_back(TokenType::Number, -parsed_number);
                 expecting_operand = false;
                 continue;
             }
 
             // Case: -(...) (or another unary expression)
             // Rewrite as: -1 * (...)
-            tokens_.push_back(Token{TokenType::Number, -1});
-            tokens_.push_back(Token{TokenType::Mult, 0});
+            tokens_.emplace_back(TokenType::Number, -1);
+            tokens_.emplace_back(TokenType::Mult, 0);
             ++i;
             expecting_operand = true;
             continue;
