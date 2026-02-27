@@ -16,21 +16,14 @@ struct Node {
         if (type == NodeType::Number) {
             return value;
         } else if (type == NodeType::Add) {
-            value = left->get_value() + right->get_value();
+            return left->get_value() + right->get_value();
         } else if (type == NodeType::Sub) {
-            value = left->get_value() - right->get_value();
+            return left->get_value() - right->get_value();
         } else if (type == NodeType::Mult) {
-            value = left->get_value() * right->get_value();
+            return left->get_value() * right->get_value();
         } else {
             return 0;
         }
-        // I think everything after this line never runs
-        type = NodeType::Number;
-        // Since we're using unique_ptr, this will automatically delete the
-        // left node, since nothing is pointing to it.
-        left = nullptr;
-        right = nullptr;
-        return value;
     }
 
     Node(int64_t v);
