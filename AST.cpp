@@ -214,18 +214,29 @@ void AST::tokenize(const std::string& input_string) {
     while (i < input_string.size()) {
         // Convert the current character. unsigned char is used here for extra
         // safety.
-        const auto input_char = static_cast<unsigned char>(input_string[i]);
+        const auto curr_char = static_cast<unsigned char>(input_string[i]);
 
         // Ignore whitespace.
-        if (std::isspace(input_char)) {
+        if (std::isspace(curr_char)) {
             ++i;
             continue;
         }
         // If it's a digit, we have a number, so we try to parse that, along
         // with the rest of the digits of this number.
-        if (std::isdigit(input_char)) {
+        if (std::isdigit(curr_char)) {
             int64_t parsed_number = parse_number(input_string, i);
-            tokens_.push_back(Token{TokenType::Number, parsed_number});
+            // "Emplace" a number token (construct it in-place in the vector)
+            // with the parsed number as the value, and an empty variable name
+            // (since it's not a variable).
+            tokens_.emplace_back(TokenType::Number, parsed_number, "");
+            continue;
+        }
+
+        // If it's a lower-case letter, parse a variable name [a-z]+.
+        if (std::islower(curr_char)) {
+            std::string parsed_variable = parse_variable_name(input_string, i);
+            tokens_.emplace_back(TokenType::Variable, 0,
+                                 std::move(parsed_variable));
             continue;
         }
 
@@ -252,11 +263,11 @@ void AST::tokenize(const std::string& input_string) {
         }
 
         // Push the operator token, with the value 0 (since it's an operator).
-        tokens_.push_back(Token{type, 0});
+        tokens_.emplace_back(type, 0, "");
         ++i;
     }
 
-    tokens_.push_back(Token{TokenType::End, 0}); // Push the end token.
+    tokens_.emplace_back(TokenType::End, 0, ""); // Push the end token.
 }
 
 /**
