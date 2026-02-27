@@ -160,8 +160,11 @@ void write_pre(const Node* current_node, std::ostream& output_stream) {
         operator_symbol = '+';
     } else if (current_node->type == NodeType::Sub) {
         operator_symbol = '-';
-    } else {
+    } else if (current_node->type == NodeType::Mult) {
         operator_symbol = '*';
+    } else {
+        // IF it's not one of these, then we have a malformed AST.
+        throw ASTException("malformed AST");
     }
     output_stream << operator_symbol << ' ';
     write_pre(current_node->left.get(), output_stream);
@@ -185,7 +188,7 @@ int64_t eval_pre(std::istream& input_stream) {
     std::string parsed_token;
     // Read the next token. If we fail to read, the input is malformed.
     if (!(input_stream >> parsed_token)) {
-        throw std::runtime_error("bad preorder");
+        throw ASTException("bad preorder");
     }
 
     // Operator token: recursively evaluate left and right subexpressions.
