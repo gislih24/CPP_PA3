@@ -16,7 +16,13 @@ namespace {
 
 // Usage of these functions will be defined by build/eval modes.
 void write_pre(const Node* current_node, std::ostream& output_stream);
+int64_t
+eval_pre(std::istream& input_stream,
+         const std::unordered_map<std::string, int64_t>& variable_values);
+std::unordered_map<std::string, int64_t>
+parse_variable_values_file(std::istream& input_stream);
 bool is_variable_token(const std::string& token);
+int64_t parse_int64_token(const std::string& token);
 
 /**
  * @brief Read an entire input stream into a std::string.
@@ -254,6 +260,99 @@ bool is_variable_token(const std::string& token) {
         return std::islower(curr_char);
     });
 }
+
+/**
+ * @brief Parse a token as a 64-bit signed integer. Throws an exception if the
+ * token is not a valid integer or if it has trailing garbage after the
+ * integer.
+ * @param token The token string to parse as an integer.
+ * @return The parsed integer value.
+ */
+int64_t parse_int64_token(const std::string& token) {
+    try {
+        std::size_t parsed_characters = 0;
+        // Parse the token as a base-10 integer.
+        const int64_t parsed_value = std::stoll(token, &parsed_characters);
+        // If the token is not a valid integer, or if it has trailing garbage
+        // after the integer, throw an error.
+        if (parsed_characters != token.size()) {
+            throw ASTException("bad integer token: " + token);
+        }
+        return parsed_value;
+    } catch (const std::exception&) {
+        throw ASTException("bad integer token: " + token);
+    }
+}
+
+/**
+ * @brief Parse a variable values file into a map of variable names to their
+ * integer values.
+ *
+ * The variable values file should have one assignment per line in the format
+ * "x=7", where the left-hand side is a variable name (lower-case letters only)
+ * and the right-hand side is an integer value.
+ * @param input_stream The input stream to read the variable assignments from.
+ * Should be positioned at the beginning of the first line of the file. The
+ * function reads until EOF.
+ * @return An unordered_map mapping variable names to their integer values as
+ * parsed from the file.
+ */
+std::unordered_map<std::string, int64_t>
+parse_variable_values_file(std::istream& input_stream) {
+    auto trim = [](const std::string& text) {
+        std::size_t start = 0;
+        while (start < text.size()) {
+            if (const auto curr_char = static_cast<unsigned char>(text[start]);
+                !std::isspace(curr_char)) {
+                break;
+            }
+            ++start;
+        }
+
+        std::size_t end = text.size();
+        while (end > start) {
+            if (const auto curr_char =
+                    static_cast<unsigned char>(text[end - 1]);
+                !std::isspace(curr_char)) {
+                break;
+            }
+            --end;
+        }
+        return text.substr(start, end - start);
+    };
+
+    std::unordered_map<std::string, int64_t> variable_values;
+    std::size_t line_number = 0;
+    std::string line;
+
+    while (std::getline(input_stream, line)) {
+        ++line_number;
+        const std::string trimmed_line = trim(line);
+        if (trimmed_line.empty()) {
+            continue;
+        }
+
+        const std::size_t equal_sign = trimmed_line.find('=');
+        if ((equal_sign == std::string::npos) ||
+            (trimmed_line.find('=', equal_sign + 1) != std::string::npos)) {
+            throw ASTException("invalid variable assignment on line " +
+                               std::to_string(line_number));
+        }
+
+        const std::string variable_name =
+            trim(trimmed_line.substr(0, equal_sign));
+        const std::string variable_value_text =
+            trim(trimmed_line.substr(equal_sign + 1));
+
+        if (!is_variable_token(variable_name)) {
+            throw ASTException("invalid variable name on line " +
+                               std::to_string(line_number));
+        }
+
+        variable_values[variable_name] = parse_int64_token(variable_value_text);
+    }
+
+    return variable_values;
 }
 
 } // namespace
