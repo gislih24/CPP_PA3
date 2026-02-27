@@ -31,3 +31,10 @@ Evaluate solution for syntax tree:
 ```bash
 ./bin/ast_program eval tree.txt
 ```
+
+Evaluate solution for syntax tree if you had any variables: 
+```bash
+./bin/ast_program eval tree.txt variables.txt
+```
+`variables.txt` should contain an assignment of the form `x=7` or `variable=9`
+or etc., one on each line.
