@@ -11,11 +11,6 @@
 // MARK: namespace
 namespace {
 
-class ASTException : public std::runtime_error {
-  public:
-    using std::runtime_error::runtime_error;
-};
-
 /**
  * @brief Returns the precedence of the given operator token.
  * @param t The operator token type to get the precedence of.

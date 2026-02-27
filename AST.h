@@ -4,6 +4,12 @@
 #include <string>
 #include <vector>
 
+// Custom exception for AST
+class ASTException : public std::runtime_error {
+  public:
+    using runtime_error::runtime_error;
+};
+
 enum class NodeType { Number, Add, Sub, Mult };
 
 struct Node {
@@ -26,7 +32,7 @@ struct Node {
         }
     }
 
-    Node(int64_t v);
+    explicit Node(int64_t v);
     Node(NodeType t, std::unique_ptr<Node> l, std::unique_ptr<Node> r);
 };
 
