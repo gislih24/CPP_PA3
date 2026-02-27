@@ -222,7 +222,9 @@ void write_pre(const Node* current_node, std::ostream& output_stream) {
  * positioned immediately after that subtree.
  * @return Computed 64-bit integer value of the parsed subtree.
  */
-int64_t eval_pre(std::istream& input_stream) {
+int64_t
+eval_pre(std::istream& input_stream,
+         const std::unordered_map<std::string, int64_t>& variable_values) {
     std::string parsed_token;
     // Read the next token. If we fail to read, the input is malformed.
     if (!(input_stream >> parsed_token)) {
@@ -231,8 +233,8 @@ int64_t eval_pre(std::istream& input_stream) {
 
     // Operator token: recursively evaluate left and right subexpressions.
     if (parsed_token == "+" || parsed_token == "-" || parsed_token == "*") {
-        int64_t l = eval_pre(input_stream);
-        int64_t r = eval_pre(input_stream);
+        int64_t l = eval_pre(input_stream, variable_values);
+        int64_t r = eval_pre(input_stream, variable_values);
         if (parsed_token == "+") {
             return l + r;
         }
@@ -242,7 +244,19 @@ int64_t eval_pre(std::istream& input_stream) {
         return l * r;
     }
 
+    // Variable token.
+    if (is_variable_token(parsed_token)) {
+        const auto variable_it = variable_values.find(parsed_token);
+        if (variable_it == variable_values.end()) {
+            throw ASTException("missing variable value: " + parsed_token);
+        }
+        return variable_it->second;
+    }
+
     // Number token.
+    return parse_int64_token(parsed_token);
+}
+
 /**
  * @brief Check if a token is a valid variable token, which consists of one or
  * more lower-case letters.
