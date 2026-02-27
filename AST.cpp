@@ -1,7 +1,9 @@
 #include "AST.h"
 
 #include <cctype>
+#include <charconv>
 #include <cstdint>
+#include <limits>
 #include <memory>
 #include <stack>
 #include <stdexcept>
@@ -61,33 +63,130 @@ bool is_arithmetic_operator(TokenType t) {
 }
 
 /**
- * @brief Parses a number from the input string starting at the given index,
- * and advances the index to the first character after the number.
- * @param input_string The input string to parse the number from.
- * @param index The index to start parsing from. Will be advanced to the first
- * character after the number. (size_t is an integer made just for storing the
- * size of things).
- * @return The parsed number.
+ * @brief Parses a signed positive int64 number from the input string.
  */
 int64_t parse_number(const std::string& input_string, std::size_t& index) {
+    const char* input_start = input_string.data() + index;
+    const char* input_end = input_string.data() + input_string.size();
+
+    // Initialize to silence warnings. Will be overwritten by from_chars if
+    // parsing is successful.
     int64_t parsed_number = 0;
-    while (index < input_string.size()) {
-        // If conversion fails, break.
-        if (const auto input_digit_char =
-                static_cast<unsigned char>(input_string[index]);
-            !std::isdigit(input_digit_char)) {
-            break;
-        }
-        // Doing "- '0'" to a character that's a digit gives you the actual
-        // integer value. E.g. '3' - '0' = 3.
-        int64_t digit_value = input_string[index] - '0';
-        // Since we're parsing each digit from left to right →, we wanna move
-        // the digits we've already parsed by one place when we add the newest
-        // digit.
-        parsed_number = parsed_number * 10 + digit_value;
-        ++index;
+    // Use from_chars to parse the number, and handle errors according to the
+    // result.
+    const auto [end_of_parsed_input, parse_error] =
+        std::from_chars(input_start, input_end, parsed_number);
+
+    // If we didn't parse any characters, then we have a missing digits error.
+    if (end_of_parsed_input == input_start) {
+        throw ASTException("missing digits in number");
     }
+    if (parse_error == std::errc::result_out_of_range) {
+        throw ASTException("integer literal overflow");
+    }
+    // If we had any other error, such as invalid characters in the number, we
+    // have an invalid numeric literal error.
+    if (parse_error != std::errc{}) {
+        throw ASTException("invalid numeric literal");
+    }
+
+    // Advance the index by the number of characters we parsed.
+    index += static_cast<std::size_t>(end_of_parsed_input - input_start);
     return parsed_number;
+}
+
+/**
+ * @brief Parses a negative int64 number from the input string (digits only).
+ * Accepts one extra magnitude unit for INT64_MIN.
+ */
+int64_t parse_negative_number(const std::string_view& input_string,
+                              std::size_t& index) {
+    // To handle negative numbers, we parse the magnitude as a positive number,
+    // and then negate it. This allows us to correctly handle the case of
+    // INT64_MIN, which has a larger magnitude than INT64_MAX.
+    constexpr uint64_t max_negative_magnitude =
+        static_cast<uint64_t>(std::numeric_limits<int64_t>::max()) + 1ULL;
+    const char* input_start = input_string.data() + index;
+    const char* input_end = input_string.data() + input_string.size();
+
+    // Initialize to silence warnings. Will be overwritten by from_chars if
+    // parsing is successful.
+    uint64_t magnitude = 0;
+    // Use from_chars to parse the number, and handle errors according to the
+    // result.
+    const auto [end_of_parsed_input, parse_error] =
+        std::from_chars(input_start, input_end, magnitude);
+
+    // If we didn't parse any characters, then we have a missing digits error.
+    if (end_of_parsed_input == input_start) {
+        throw ASTException("missing digits in number");
+    }
+    if (parse_error == std::errc::result_out_of_range) {
+        throw ASTException("integer literal overflow");
+    }
+    // If we had any other error, such as invalid characters in the number, we
+    // have an invalid numeric literal error.
+    if (parse_error != std::errc{}) {
+        throw ASTException("invalid numeric literal");
+    }
+    if (magnitude > max_negative_magnitude) {
+        throw ASTException("integer literal overflow");
+    }
+
+    // Advance the index by the number of characters we parsed.
+    index += static_cast<std::size_t>(end_of_parsed_input - input_start);
+
+    // Negate the magnitude to get the final parsed number. If the magnitude is
+    // equal to max_negative_magnitude, then we have the case of INT64_MIN,
+    // which we can return directly as a special case to avoid overflow from
+    // negating it.
+    if (magnitude == max_negative_magnitude) {
+        return std::numeric_limits<int64_t>::min();
+    }
+    return -static_cast<int64_t>(magnitude);
+}
+
+/**
+ * @brief Checked arithmetic operations that throw an ASTException on overflow
+ * or other error conditions (such as division by zero).
+ *
+ * @param left The left operand of the operation.
+ * @param right The right operand of the operation.
+ * @return The result of the arithmetic operation if it does not overflow or
+ * have other error conditions.
+ */
+int64_t checked_add(int64_t left, int64_t right) {
+    int64_t result = 0;
+    if (__builtin_add_overflow(left, right, &result)) {
+        throw ASTException("overflow in addition");
+    }
+    return result;
+}
+
+int64_t checked_sub(int64_t left, int64_t right) {
+    int64_t result = 0;
+    if (__builtin_sub_overflow(left, right, &result)) {
+        throw ASTException("overflow in subtraction");
+    }
+    return result;
+}
+
+int64_t checked_mul(int64_t left, int64_t right) {
+    int64_t result = 0;
+    if (__builtin_mul_overflow(left, right, &result)) {
+        throw ASTException("overflow in multiplication");
+    }
+    return result;
+}
+
+int64_t checked_div(int64_t left, int64_t right) {
+    if (right == 0) {
+        throw ASTException("division by zero");
+    }
+    if (left == std::numeric_limits<int64_t>::min() && right == -1) {
+        throw ASTException("overflow in division");
+    }
+    return left / right;
 }
 
 /**
@@ -102,8 +201,6 @@ std::string parse_variable_name(const std::string& input_string,
                                 std::size_t& index) {
     const std::size_t start_index = index;
     while (index < input_string.size()) {
-        // If the current input character isn't a lowercase ASCII character,
-        // then break.
         if (const auto curr_char =
                 static_cast<unsigned char>(input_string[index]);
             !std::islower(curr_char)) {
@@ -173,6 +270,145 @@ void handle_operator(TokenType op_token_type,
     operator_stack.push(op_token_type);
 }
 
+/**
+ * @brief Handles unary minus by rewriting it to either a negative number
+ * token or to -1 * (...).
+ * @param input_string The input string being tokenized.
+ * @param i The current index in the input string.
+ * @param tokens The vector of tokens to add to.
+ */
+void handle_unary_minus(const std::string& input_string, std::size_t& i,
+                        std::vector<Token>& tokens) {
+    // Look ahead to find the next non-whitespace character after the unary
+    // minus, to determine if we have a case like: -(digits...) or -(...) (or
+    // another unary minus).
+    std::size_t lookahead = i + 1;
+    // Skip whitespace after the unary minus to find the next non-whitespace
+    // character.
+    while (lookahead < input_string.size() &&
+           std::isspace(static_cast<unsigned char>(input_string[lookahead]))) {
+        ++lookahead;
+    }
+
+    // If we reach the end of the string after skipping whitespace, then we
+    // have a unary minus with no operand error.
+    if (lookahead >= input_string.size()) {
+        throw ASTException("missing operand after unary minus");
+    }
+
+    // Case: -(digits...)  -> Number(-digits...)
+    if (std::isdigit(static_cast<unsigned char>(input_string[lookahead]))) {
+        i = lookahead;
+        const int64_t parsed_number = parse_negative_number(input_string, i);
+        tokens.emplace_back(TokenType::Number, parsed_number, "");
+        return;
+    }
+
+    // Case: -(...) (or another unary expression)
+    // Rewrite as: -1 * (...)
+    if (!std::islower(static_cast<unsigned char>(input_string[lookahead])) &&
+        input_string[lookahead] != '(' && input_string[lookahead] != '-') {
+        throw ASTException("missing operand after unary minus");
+    }
+    tokens.emplace_back(TokenType::Number, -1, "");
+    tokens.emplace_back(TokenType::Mult, 0, "");
+    ++i;
+}
+
+/**
+ * @brief Handles parsing an operand (number, variable, or left paren) when
+ * an operand is expected.
+ * @param input_string The input string being tokenized.
+ * @param i The current index in the input string.
+ * @param tokens The vector of tokens to add to.
+ * @return true if an operand was successfully parsed, false otherwise.
+ */
+bool is_operand_valid(const std::string& input_string, std::size_t& i,
+                      std::vector<Token>& tokens) {
+    const auto curr_char = static_cast<unsigned char>(input_string[i]);
+
+    // Check if we have a number, variable, or left paren, and handle
+    // accordingly.
+    if (std::isdigit(curr_char)) {
+        const int64_t parsed_number = parse_number(input_string, i);
+        tokens.emplace_back(TokenType::Number, parsed_number, "");
+        return true;
+    }
+
+    if (std::islower(curr_char)) {
+        std::string parsed_variable = parse_variable_name(input_string, i);
+        tokens.emplace_back(TokenType::Variable, 0, std::move(parsed_variable));
+        return true;
+    }
+
+    if (input_string[i] == '(') {
+        tokens.emplace_back(TokenType::LParen, 0, "");
+        ++i;
+        return true;
+    }
+
+    return false;
+}
+
+/**
+ * @brief Validates and handles operators and closing parenthesis when an
+ * operand is not expected.
+ * @param input_string The input string being tokenized.
+ * @param i The current index in the input string.
+ * @param tokens The vector of tokens to add to.
+ * @return true if a valid operator or closing paren was found, false otherwise.
+ */
+bool handle_operator_or_close_paren(const std::string& input_string,
+                                    std::size_t& i,
+                                    std::vector<Token>& tokens) {
+    if (input_string[i] == '+') {
+        tokens.emplace_back(TokenType::Plus, 0, "");
+        ++i;
+        return true;
+    }
+    if (input_string[i] == '-') {
+        tokens.emplace_back(TokenType::Minus, 0, "");
+        ++i;
+        return true;
+    }
+    if (input_string[i] == '*') {
+        tokens.emplace_back(TokenType::Mult, 0, "");
+        ++i;
+        return true;
+    }
+    if (input_string[i] == '/') {
+        tokens.emplace_back(TokenType::Div, 0, "");
+        ++i;
+        return true;
+    }
+    if (input_string[i] == ')') {
+        tokens.emplace_back(TokenType::RParen, 0, "");
+        ++i;
+        return true;
+    }
+
+    return false;
+}
+
+/**
+ * @brief Validates a character when an operand is expected but not found.
+ * @param input_string The input string being tokenized.
+ * @param i The current index in the input string.
+ */
+[[noreturn]] void validate_expected_operand(const std::string& input_string,
+                                            std::size_t const& i) {
+    if (input_string[i] == ')') {
+        throw ASTException("missing operand before ')'");
+    }
+
+    if (input_string[i] == '+' || input_string[i] == '*' ||
+        input_string[i] == '/') {
+        throw ASTException("missing operand");
+    }
+
+    throw ASTException("invalid character in expression");
+}
+
 } // namespace
 
 // ---------------------------- Node constructors ----------------------------
@@ -190,6 +426,38 @@ Node::Node(std::string variable)
 Node::Node(NodeType t, std::unique_ptr<Node> l, std::unique_ptr<Node> r)
     : type(t), value(0), variable_name(""), left(std::move(l)),
       right(std::move(r)) {}
+
+/**
+ * @brief Recursively evaluates the value of the AST rooted at this node.
+ * @return The result of evaluating the AST rooted at this node.
+ */
+int64_t Node::get_value() {
+    if (type == NodeType::Number) {
+        return value;
+    }
+    if (type == NodeType::Variable) {
+        throw ASTException("cannot evaluate variable without bindings");
+    }
+
+    if (!left || !right) {
+        throw ASTException("malformed AST");
+    }
+
+    if (type == NodeType::Add) {
+        return checked_add(left->get_value(), right->get_value());
+    }
+    if (type == NodeType::Sub) {
+        return checked_sub(left->get_value(), right->get_value());
+    }
+    if (type == NodeType::Mult) {
+        return checked_mul(left->get_value(), right->get_value());
+    }
+    if (type == NodeType::Div) {
+        return checked_div(left->get_value(), right->get_value());
+    }
+
+    throw ASTException("malformed AST");
+}
 
 // MARK: AST
 // ----------------------------------- AST -----------------------------------
@@ -210,14 +478,12 @@ void AST::clear() {
 void AST::tokenize(const std::string& input_string) {
     tokens_.clear(); // Clear the tokens first.
 
-    // size_t is used here since it's a type that's guaranteed to be able to
-    // represent the size of any object in memory.
     std::size_t i = 0;
-    bool expecting_operand = true;
+    bool is_awaiting_operand = true;
+    bool saw_non_whitespace = false;
+
     // Go through the characters of the string.
     while (i < input_string.size()) {
-        // Convert the current character. unsigned char is used here for extra
-        // safety.
         const auto curr_char = static_cast<unsigned char>(input_string[i]);
 
         // Ignore whitespace.
@@ -226,90 +492,50 @@ void AST::tokenize(const std::string& input_string) {
             continue;
         }
 
-        // Handle unary minus by rewriting it to either a negative number
-        // token or to -1 * (...), depending on what follows.
-        if (input_string[i] == '-' && expecting_operand) {
-            std::size_t lookahead = i + 1;
-            while (lookahead < input_string.size() &&
-                   std::isspace(
-                       static_cast<unsigned char>(input_string[lookahead]))) {
-                ++lookahead;
-            }
+        saw_non_whitespace = true;
 
-            // Case: -(digits...)  -> Number(-digits...)
-            if (lookahead < input_string.size() &&
-                std::isdigit(
-                    static_cast<unsigned char>(input_string[lookahead]))) {
-                i = lookahead;
-                int64_t parsed_number = parse_number(input_string, i);
-                tokens_.emplace_back(TokenType::Number, -parsed_number);
-                expecting_operand = false;
+        // Handle unary minus.
+        if (input_string[i] == '-' && is_awaiting_operand) {
+            handle_unary_minus(input_string, i, tokens_);
+            // Unary minus can emit:
+            // 1) Number(-x)         -> next token must be an operator.
+            // 2) Number(-1), Mult   -> next token must be an operand.
+            is_awaiting_operand = (tokens_.back().type == TokenType::Mult);
+            continue;
+        }
+
+        // Handle operands when expected.
+        if (is_awaiting_operand) {
+            if (is_operand_valid(input_string, i, tokens_)) {
+                // If we just consumed "(", we are still awaiting an operand.
+                is_awaiting_operand =
+                    (tokens_.back().type == TokenType::LParen);
                 continue;
             }
 
-            // Case: -(...) (or another unary expression)
-            // Rewrite as: -1 * (...)
-            tokens_.emplace_back(TokenType::Number, -1);
-            tokens_.emplace_back(TokenType::Mult, 0);
-            ++i;
-            expecting_operand = true;
+            validate_expected_operand(input_string, i);
+        }
+
+        // Handle operators and closing parenthesis.
+        if (handle_operator_or_close_paren(input_string, i, tokens_)) {
+            is_awaiting_operand = (tokens_.back().type != TokenType::RParen);
             continue;
         }
 
-        // If it's a digit, we have a number, so we try to parse that, along
-        // with the rest of the digits of this number.
-        if (std::isdigit(curr_char)) {
-            int64_t parsed_number = parse_number(input_string, i);
-            // "Emplace" a number token (construct it in-place in the vector)
-            // with the parsed number as the value, and an empty variable name
-            // (since it's not a variable).
-            tokens_.emplace_back(TokenType::Number, parsed_number, "");
-            expecting_operand = false;
-            continue;
+        // Check for missing operator between operands.
+        if (std::isdigit(curr_char) || std::islower(curr_char) ||
+            input_string[i] == '(') {
+            throw ASTException("missing operator between operands");
         }
 
-        // If it's a lower-case letter, parse a variable name [a-z]+.
-        if (std::islower(curr_char)) {
-            std::string parsed_variable = parse_variable_name(input_string, i);
-            tokens_.emplace_back(TokenType::Variable, 0,
-                                 std::move(parsed_variable));
-            continue;
-        }
+        throw ASTException("invalid character in expression");
+    }
 
-        // If it's a token, try to parse it.
-        TokenType type;
-        switch (input_string[i]) {
-        case '+':
-            type = TokenType::Plus;
-            break;
-        case '-':
-            type = TokenType::Minus;
-            break;
-        case '*':
-            type = TokenType::Mult;
-            break;
-        case '/':
-            type = TokenType::Div;
-            break;
-        case '(':
-            type = TokenType::LParen;
-            break;
-        case ')':
-            type = TokenType::RParen;
-            break;
-        default:
-            throw ASTException("invalid character in expression");
-        }
-
-        // Push the operator token, with the value 0 (since it's an operator).
-        tokens_.emplace_back(type, 0, "");
-        ++i;
-
-        if (type == TokenType::RParen) {
-            expecting_operand = false;
-        } else {
-            expecting_operand = true;
-        }
+    if (!saw_non_whitespace) {
+        throw ASTException("empty expression");
+    }
+    if (is_awaiting_operand) {
+        throw ASTException("expression ends with operator");
     }
 
     tokens_.emplace_back(TokenType::End, 0, ""); // Push the end token.
