@@ -12,22 +12,23 @@
 namespace {
 
 // Usage of these functions will be defined by build/eval modes.
-void write_pre(const Node* n, std::ostream& out);
-int64_t eval_pre(std::istream& in);
+void write_pre(const Node* current_node, std::ostream& output_stream);
+int64_t eval_pre(std::istream& input_stream);
 
 /**
  * @brief Read an entire input stream into a std::string.
  *
- * This is used for expression input file reading in build mode. The iterators
- * consume the entire stream until EOF and construct a single string with the
- * content.
+ * This is used for expression input file reading input_stream build mode. The
+ * iterators consume the entire stream until EOF and construct a single string
+ * with the content.
  *
- * @param in Input stream currently positioned at the first character to read.
- * Consumes the entire stream content and leaves the stream positioned at EOF.
+ * @param input_stream Input stream currently positioned at the first character
+ * to read. Consumes the entire stream content and leaves the stream positioned
+ * at EOF.
  * @return The full content of the input stream as a single std::string.
  */
-std::string read_all(std::istream& in) {
-    return {std::istreambuf_iterator<char>(in),
+std::string read_all(std::istream& input_stream) {
+    return {std::istreambuf_iterator<char>(input_stream),
             std::istreambuf_iterator<char>()};
 }
 
@@ -128,37 +129,37 @@ int run_eval_mode(int argc, char* argv[]) {
  *
  * Format (space-separated tokens):
  * - Number node  -> <integer>
- * - Operator node-> <op> <left-subtree> <right-subtree>
- *   where <op> is one of +, -, *
+ * - Operator node-> <operator_symbol> <left-subtree> <right-subtree>
+ *   where <operator_symbol> is one of +, -, *
  *
  * Example for 1 + 1:
  *   + 1 1
  *
- * @param n Current AST node pointer in recursive context.
+ * @param current_node Current AST node pointer in recursive context.
  * - Number node => writes the integer token's value.
  * - Operator node => writes the operator token and recurses into left/right
- * @param out Output stream receiving the preorder token stream.
+ * @param output_stream Output stream receiving the preorder token stream.
  */
-void write_pre(const Node* n, std::ostream& out) {
+void write_pre(const Node* current_node, std::ostream& output_stream) {
     // Leaf case: output the integer value.
-    if (n->type == NodeType::Number) {
-        out << n->value << ' ';
+    if (current_node->type == NodeType::Number) {
+        output_stream << current_node->value << ' ';
         return;
     }
 
     // Internal node: emit the operator token first (preorder), then recurse
     // into its child nodes.
-    char op;
-    if (n->type == NodeType::Add) {
-        op = '+';
-    } else if (n->type == NodeType::Sub) {
-        op = '-';
+    char operator_symbol;
+    if (current_node->type == NodeType::Add) {
+        operator_symbol = '+';
+    } else if (current_node->type == NodeType::Sub) {
+        operator_symbol = '-';
     } else {
-        op = '*';
+        operator_symbol = '*';
     }
-    out << op << ' ';
-    write_pre(n->left.get(), out);
-    write_pre(n->right.get(), out);
+    output_stream << operator_symbol << ' ';
+    write_pre(current_node->left.get(), output_stream);
+    write_pre(current_node->right.get(), output_stream);
 }
 
 /**
@@ -169,30 +170,33 @@ void write_pre(const Node* n, std::ostream& out) {
  *   operands.
  * - Otherwise the token is parsed as a signed integer literal.
  *
- * @param in The input stream containing preorder tokens. The function consumes
- * exactly the tokens for one subtree and leaves the stream positioned
- * immediately after that subtree.
+ * @param input_stream The input stream containing preorder tokens. The
+ * function consumes exactly the tokens for one subtree and leaves the stream
+ * positioned immediately after that subtree.
  * @return Computed 64-bit integer value of the parsed subtree.
  */
-int64_t eval_pre(std::istream& in) {
-    std::string tok;
+int64_t eval_pre(std::istream& input_stream) {
+    std::string parsed_token;
     // Read the next token. If we fail to read, the input is malformed.
-    if (!(in >> tok))
+    if (!(input_stream >> parsed_token)) {
         throw std::runtime_error("bad preorder");
+    }
 
     // Operator token: recursively evaluate left and right subexpressions.
-    if (tok == "+" || tok == "-" || tok == "*") {
-        int64_t l = eval_pre(in);
-        int64_t r = eval_pre(in);
-        if (tok == "+")
+    if (parsed_token == "+" || parsed_token == "-" || parsed_token == "*") {
+        int64_t l = eval_pre(input_stream);
+        int64_t r = eval_pre(input_stream);
+        if (parsed_token == "+") {
             return l + r;
-        if (tok == "-")
+        }
+        if (parsed_token == "-") {
             return l - r;
+        }
         return l * r;
     }
 
     // Number token.
-    return std::stoll(tok);
+    return std::stoll(parsed_token);
 }
 
 } // namespace
