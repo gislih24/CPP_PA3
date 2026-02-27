@@ -395,7 +395,8 @@ int main(int argc, char* argv[]) {
             std::cerr << "Usage:\n"
                       << "  " << argv[0]
                       << " build <ast_output_file> <expression_input_file>\n"
-                      << "  " << argv[0] << " eval <ast_input_file>\n";
+                      << "  " << argv[0]
+                      << " eval <ast_input_file> [variable_values_file]\n";
             return 1;
         }
 
