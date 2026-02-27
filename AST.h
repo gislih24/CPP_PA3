@@ -21,6 +21,8 @@ struct Node {
     int64_t get_value() {
         if (type == NodeType::Number) {
             return value;
+        } else if (type == NodeType::Variable) {
+            throw ASTException("cannot evaluate variable without bindings");
         } else if (type == NodeType::Add) {
             return left->get_value() + right->get_value();
         } else if (type == NodeType::Sub) {
@@ -36,7 +38,16 @@ struct Node {
     Node(NodeType t, std::unique_ptr<Node> l, std::unique_ptr<Node> r);
 };
 
-enum class TokenType { Number, Plus, Minus, Mult, LParen, RParen, End };
+enum class TokenType {
+    Number,
+    Variable,
+    Plus,
+    Minus,
+    Mult,
+    LParen,
+    RParen,
+    End
+};
 
 struct Token {
     TokenType type;
