@@ -205,7 +205,14 @@ int64_t eval_pre(std::istream& input_stream) {
     }
 
     // Number token.
-    return std::stoll(parsed_token);
+    int64_t result = std::stoll(parsed_token);
+
+    // Check for trailing garbage tokens after the full tree is read.
+    if (std::string trailing; input_stream >> trailing) {
+        throw ASTException("trailing garbage in preorder");
+    }
+
+    return result;
 }
 
 } // namespace
