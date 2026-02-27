@@ -83,8 +83,8 @@ The following is a list of additional features that may be implemented to achiev
   - [ ] Detail what optimisations you make in the README.
   - [ ] If you make only very simple optimisations like replacing `0*x` by `0` and nothing else, this is less than 10%.
   - [ ] If you do more advanced simplifications than mentioned here, such as multiplying inside parentheses, dropping unnecessary parentheses, and more, it can be more than 10%.
-- [ ] **Extra operations (10%):** Your program supports binary minus, binary division (rounds down like in C++), and unary minus.
-  - [ ] So, for example, “`(-3-12)/5`” should work.
+- [x] **Extra operations (10%):** Your program supports binary minus, binary division (rounds down like in C++), and unary minus.
+  - [x] So, for example, “`(-3-12)/5`” should work.
 - [ ] **High speed (15%):** Both program parts run efficiently and can handle input sizes of above a million characters in around a second or so.
   - [ ] The slow part that causes quadratic behaviour in the simpler implementation is scanning from left to right in linear time each time you want to parse the substring `l` to `r`.
   - [ ] So you have to be able to find what to split on quickly, and find the matching closing paren to an opening paren quickly, and so forth.
