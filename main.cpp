@@ -1,10 +1,13 @@
 #include "AST.h"
 
+#include <algorithm>
+#include <cctype>
 #include <fstream>
 #include <iostream>
 #include <iterator>
 #include <stdexcept>
 #include <string>
+#include <unordered_map>
 #include <vector>
 
 // All h// er functions are kept in a separate anonymous namespace to avoid
@@ -14,7 +17,13 @@ namespace {
 
 // Usage of these functions will be defined by build/eval modes.
 void write_pre(const Node* current_node, std::ostream& output_stream);
-int64_t eval_pre(std::istream& input_stream);
+int64_t
+eval_pre(std::istream& input_stream,
+         const std::unordered_map<std::string, int64_t>& variable_values);
+std::unordered_map<std::string, int64_t>
+parse_variable_values_file(std::istream& input_stream);
+bool is_variable_token(const std::string& token);
+int64_t parse_int64_token(const std::string& token);
 
 /**
  * @brief Read an entire input stream into a std::string.
@@ -97,20 +106,25 @@ int run_build_mode(int argc, char* argv[]) {
  *   3. Print the final numeric result to stdout.
  *
  * CLI contract:
- *     <program> eval <ast_input_file>
+ *     <program> eval <ast_input_file> [variable_values_file]
  *
- * @param argc Argument count from main context. Must be exactly 3.
+ * @param argc Argument count from main context. Must be 3 or 4.
  * @param argv Argument vector from main context.
  * - argv[0]: The executable name.
  * - argv[1]: The mode string (in this case: "eval").
  * - argv[2]: The AST input file path containing the preorder token stream to
  *   evaluate.
+ * - argv[3]: Optional variable values file path. One assignment per line in
+ *   the format "x=7".
  * @return Exit code (0 on success, non-zero on error).
  */
 int run_eval_mode(int argc, char* argv[]) {
-    // Require 3 arguments total (program name + mode + input file).
-    if (argc != 3) {
-        std::cerr << "Usage: " << argv[0] << " eval <ast_input_file>\n";
+    // Support:
+    //   <program> eval <ast_input_file>
+    //   <program> eval <ast_input_file> <variable_values_file>
+    if (argc != 3 && argc != 4) {
+        std::cerr << "Usage: " << argv[0]
+                  << " eval <ast_input_file> [variable_values_file]\n";
         return 1;
     }
 
@@ -121,9 +135,22 @@ int run_eval_mode(int argc, char* argv[]) {
         return 1;
     }
 
+    // The map of variable names to their integer values, if provided.
+    std::unordered_map<std::string, int64_t> variable_values;
+    // If a variable values file is provided, parse it into the variable_values
+    // map.
+    if (argc == 4) {
+        std::ifstream variable_values_input(argv[3]);
+        if (!variable_values_input) {
+            std::cerr << "Error: could not open variable values file\n";
+            return 1;
+        }
+        variable_values = parse_variable_values_file(variable_values_input);
+    }
+
     // Evaluate the preorder stream directly and print the final result.
     try {
-        const int64_t result = eval_pre(ast_input);
+        const int64_t result = eval_pre(ast_input, variable_values);
 
         // Check for trailing garbage tokens after the full tree is read.
         if (std::string trailing; ast_input >> trailing) {
@@ -160,6 +187,10 @@ void write_pre(const Node* current_node, std::ostream& output_stream) {
         output_stream << current_node->value << ' ';
         return;
     }
+    if (current_node->type == NodeType::Variable) {
+        output_stream << current_node->variable_name << ' ';
+        return;
+    }
 
     // Internal node: emit the operator token first (preorder), then recurse
     // into its child nodes.
@@ -194,7 +225,9 @@ void write_pre(const Node* current_node, std::ostream& output_stream) {
  * positioned immediately after that subtree.
  * @return Computed 64-bit integer value of the parsed subtree.
  */
-int64_t eval_pre(std::istream& input_stream) {
+int64_t
+eval_pre(std::istream& input_stream,
+         const std::unordered_map<std::string, int64_t>& variable_values) {
     std::vector<std::string> tokens;
     for (std::string token; input_stream >> token;) {
         tokens.push_back(token);
@@ -203,6 +236,20 @@ int64_t eval_pre(std::istream& input_stream) {
     if (tokens.empty()) {
         throw ASTException("bad preorder");
     }
+    /*
+
+    // Variable token.
+    if (is_variable_token(parsed_token)) {
+        const auto variable_it = variable_values.find(parsed_token);
+        if (variable_it == variable_values.end()) {
+            throw ASTException("missing variable value: " + parsed_token);
+        }
+        return variable_it->second;
+    }
+
+    // Number token.
+    return parse_int64_token(parsed_token);
+    */
 
     std::vector<int64_t> values;
     values.reserve(tokens.size());
@@ -211,6 +258,8 @@ int64_t eval_pre(std::istream& input_stream) {
         const std::string& tok = *it;
 
         if (tok == "+" || tok == "-" || tok == "*" || tok == "/") {
+            int64_t l = eval_pre(input_stream, variable_values);
+            int64_t r = eval_pre(input_stream, variable_values);
             if (values.size() < 2) {
                 throw ASTException("bad preorder");
             }
@@ -243,6 +292,117 @@ int64_t eval_pre(std::istream& input_stream) {
 
     return values.back();
 }
+/**
+ * @brief Check if a token is a valid variable token, which consists of one or
+ * more lower-case letters.
+ * @param token The token string to check.
+ * @return True if the token is a valid variable token, false otherwise.
+ */
+bool is_variable_token(const std::string& token) {
+    if (token.empty()) {
+        return false;
+    }
+    // Return whether all characters in the token can be parsed as lowercase
+    // ASCII.
+    return std::ranges::all_of(token, [](char character) {
+        const auto curr_char = static_cast<unsigned char>(character);
+        return std::islower(curr_char);
+    });
+}
+
+/**
+ * @brief Parse a token as a 64-bit signed integer. Throws an exception if the
+ * token is not a valid integer or if it has trailing garbage after the
+ * integer.
+ * @param token The token string to parse as an integer.
+ * @return The parsed integer value.
+ */
+int64_t parse_int64_token(const std::string& token) {
+    try {
+        std::size_t parsed_characters = 0;
+        // Parse the token as a base-10 integer.
+        const int64_t parsed_value = std::stoll(token, &parsed_characters);
+        // If the token is not a valid integer, or if it has trailing garbage
+        // after the integer, throw an error.
+        if (parsed_characters != token.size()) {
+            throw ASTException("bad integer token: " + token);
+        }
+        return parsed_value;
+    } catch (const std::exception&) {
+        throw ASTException("bad integer token: " + token);
+    }
+}
+
+/**
+ * @brief Parse a variable values file into a map of variable names to their
+ * integer values.
+ *
+ * The variable values file should have one assignment per line in the format
+ * "x=7", where the left-hand side is a variable name (lower-case letters only)
+ * and the right-hand side is an integer value.
+ * @param input_stream The input stream to read the variable assignments from.
+ * Should be positioned at the beginning of the first line of the file. The
+ * function reads until EOF.
+ * @return An unordered_map mapping variable names to their integer values as
+ * parsed from the file.
+ */
+std::unordered_map<std::string, int64_t>
+parse_variable_values_file(std::istream& input_stream) {
+    auto trim = [](const std::string& text) {
+        std::size_t start = 0;
+        while (start < text.size()) {
+            if (const auto curr_char = static_cast<unsigned char>(text[start]);
+                !std::isspace(curr_char)) {
+                break;
+            }
+            ++start;
+        }
+
+        std::size_t end = text.size();
+        while (end > start) {
+            if (const auto curr_char =
+                    static_cast<unsigned char>(text[end - 1]);
+                !std::isspace(curr_char)) {
+                break;
+            }
+            --end;
+        }
+        return text.substr(start, end - start);
+    };
+
+    std::unordered_map<std::string, int64_t> variable_values;
+    std::size_t line_number = 0;
+    std::string line;
+
+    while (std::getline(input_stream, line)) {
+        ++line_number;
+        const std::string trimmed_line = trim(line);
+        if (trimmed_line.empty()) {
+            continue;
+        }
+
+        const std::size_t equal_sign = trimmed_line.find('=');
+        if ((equal_sign == std::string::npos) ||
+            (trimmed_line.find('=', equal_sign + 1) != std::string::npos)) {
+            throw ASTException("invalid variable assignment on line " +
+                               std::to_string(line_number));
+        }
+
+        const std::string variable_name =
+            trim(trimmed_line.substr(0, equal_sign));
+        const std::string variable_value_text =
+            trim(trimmed_line.substr(equal_sign + 1));
+
+        if (!is_variable_token(variable_name)) {
+            throw ASTException("invalid variable name on line " +
+                               std::to_string(line_number));
+        }
+
+        variable_values[variable_name] = parse_int64_token(variable_value_text);
+    }
+
+    return variable_values;
+}
 
 } // namespace
 
@@ -270,7 +430,8 @@ int main(int argc, char* argv[]) {
             std::cerr << "Usage:\n"
                       << "  " << argv[0]
                       << " build <ast_output_file> <expression_input_file>\n"
-                      << "  " << argv[0] << " eval <ast_input_file>\n";
+                      << "  " << argv[0]
+                      << " eval <ast_input_file> [variable_values_file]\n";
             return 1;
         }
 

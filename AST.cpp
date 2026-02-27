@@ -91,6 +91,30 @@ int64_t parse_number(const std::string& input_string, std::size_t& index) {
 }
 
 /**
+ * @brief Parses a lower-case ASCII variable name from the input string
+ * starting at the given index and advances the index to the first character
+ * after the variable.
+ * @param input_string The input string to parse from.
+ * @param index The index to start parsing from. Advanced past the variable.
+ * @return The parsed variable name.
+ */
+std::string parse_variable_name(const std::string& input_string,
+                                std::size_t& index) {
+    const std::size_t start_index = index;
+    while (index < input_string.size()) {
+        // If the current input character isn't a lowercase ASCII character,
+        // then break.
+        if (const auto curr_char =
+                static_cast<unsigned char>(input_string[index]);
+            !std::islower(curr_char)) {
+            break;
+        }
+        ++index;
+    }
+    return input_string.substr(start_index, index - start_index);
+}
+
+/**
  * @brief Pops the top operator from the operator stack, pops the top two
  * values from the value stack, applies the operator to the values, and pushes
  * the result back onto the value stack.
@@ -154,11 +178,18 @@ void handle_operator(TokenType op_token_type,
 // ---------------------------- Node constructors ----------------------------
 // Constructor for number nodes.
 Node::Node(int64_t v)
-    : type(NodeType::Number), value(v), left(nullptr), right(nullptr) {}
+    : type(NodeType::Number), value(v), variable_name(""), left(nullptr),
+      right(nullptr) {}
+
+// Constructor for variable nodes.
+Node::Node(std::string variable)
+    : type(NodeType::Variable), value(0), variable_name(std::move(variable)),
+      left(nullptr), right(nullptr) {}
 
 // Constructor for operator nodes.
 Node::Node(NodeType t, std::unique_ptr<Node> l, std::unique_ptr<Node> r)
-    : type(t), value(0), left(std::move(l)), right(std::move(r)) {}
+    : type(t), value(0), variable_name(""), left(std::move(l)),
+      right(std::move(r)) {}
 
 // MARK: AST
 // ----------------------------------- AST -----------------------------------
@@ -187,10 +218,10 @@ void AST::tokenize(const std::string& input_string) {
     while (i < input_string.size()) {
         // Convert the current character. unsigned char is used here for extra
         // safety.
-        const auto input_char = static_cast<unsigned char>(input_string[i]);
+        const auto curr_char = static_cast<unsigned char>(input_string[i]);
 
         // Ignore whitespace.
-        if (std::isspace(input_char)) {
+        if (std::isspace(curr_char)) {
             ++i;
             continue;
         }
@@ -200,15 +231,15 @@ void AST::tokenize(const std::string& input_string) {
         if (input_string[i] == '-' && expecting_operand) {
             std::size_t lookahead = i + 1;
             while (lookahead < input_string.size() &&
-                   std::isspace(static_cast<unsigned char>(
-                       input_string[lookahead]))) {
+                   std::isspace(
+                       static_cast<unsigned char>(input_string[lookahead]))) {
                 ++lookahead;
             }
 
             // Case: -(digits...)  -> Number(-digits...)
             if (lookahead < input_string.size() &&
-                std::isdigit(static_cast<unsigned char>(
-                    input_string[lookahead]))) {
+                std::isdigit(
+                    static_cast<unsigned char>(input_string[lookahead]))) {
                 i = lookahead;
                 int64_t parsed_number = parse_number(input_string, i);
                 tokens_.push_back(Token{TokenType::Number, -parsed_number});
@@ -227,10 +258,21 @@ void AST::tokenize(const std::string& input_string) {
 
         // If it's a digit, we have a number, so we try to parse that, along
         // with the rest of the digits of this number.
-        if (std::isdigit(input_char)) {
+        if (std::isdigit(curr_char)) {
             int64_t parsed_number = parse_number(input_string, i);
-            tokens_.push_back(Token{TokenType::Number, parsed_number});
+            // "Emplace" a number token (construct it in-place in the vector)
+            // with the parsed number as the value, and an empty variable name
+            // (since it's not a variable).
+            tokens_.emplace_back(TokenType::Number, parsed_number, "");
             expecting_operand = false;
+            continue;
+        }
+
+        // If it's a lower-case letter, parse a variable name [a-z]+.
+        if (std::islower(curr_char)) {
+            std::string parsed_variable = parse_variable_name(input_string, i);
+            tokens_.emplace_back(TokenType::Variable, 0,
+                                 std::move(parsed_variable));
             continue;
         }
 
@@ -260,7 +302,7 @@ void AST::tokenize(const std::string& input_string) {
         }
 
         // Push the operator token, with the value 0 (since it's an operator).
-        tokens_.push_back(Token{type, 0});
+        tokens_.emplace_back(type, 0, "");
         ++i;
 
         if (type == TokenType::RParen) {
@@ -270,7 +312,7 @@ void AST::tokenize(const std::string& input_string) {
         }
     }
 
-    tokens_.push_back(Token{TokenType::End, 0}); // Push the end token.
+    tokens_.emplace_back(TokenType::End, 0, ""); // Push the end token.
 }
 
 /**
@@ -293,6 +335,12 @@ void AST::add_tokens_to_tree() {
         // If we have a number token, push it onto the value stack.
         if (current_token.type == TokenType::Number) {
             value_stack.push(std::make_unique<Node>(current_token.value));
+            continue;
+        }
+
+        if (current_token.type == TokenType::Variable) {
+            value_stack.push(
+                std::make_unique<Node>(current_token.variable_name));
             continue;
         }
 
