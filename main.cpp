@@ -1,10 +1,13 @@
 #include "AST.h"
 
+#include <algorithm>
+#include <cctype>
 #include <fstream>
 #include <iostream>
 #include <iterator>
 #include <stdexcept>
 #include <string>
+#include <unordered_map>
 
 // All helper functions are kept in a separate anonymous namespace to avoid
 // cluttering the AST class with implementation details.
@@ -96,20 +99,25 @@ int run_build_mode(int argc, char* argv[]) {
  *   3. Print the final numeric result to stdout.
  *
  * CLI contract:
- *     <program> eval <ast_input_file>
+ *     <program> eval <ast_input_file> [variable_values_file]
  *
- * @param argc Argument count from main context. Must be exactly 3.
+ * @param argc Argument count from main context. Must be 3 or 4.
  * @param argv Argument vector from main context.
  * - argv[0]: The executable name.
  * - argv[1]: The mode string (in this case: "eval").
  * - argv[2]: The AST input file path containing the preorder token stream to
  *   evaluate.
+ * - argv[3]: Optional variable values file path. One assignment per line in
+ *   the format "x=7".
  * @return Exit code (0 on success, non-zero on error).
  */
 int run_eval_mode(int argc, char* argv[]) {
-    // Require 3 arguments total (program name + mode + input file).
-    if (argc != 3) {
-        std::cerr << "Usage: " << argv[0] << " eval <ast_input_file>\n";
+    // Support:
+    //   <program> eval <ast_input_file>
+    //   <program> eval <ast_input_file> <variable_values_file>
+    if (argc != 3 && argc != 4) {
+        std::cerr << "Usage: " << argv[0]
+                  << " eval <ast_input_file> [variable_values_file]\n";
         return 1;
     }
 
@@ -120,9 +128,22 @@ int run_eval_mode(int argc, char* argv[]) {
         return 1;
     }
 
+    // The map of variable names to their integer values, if provided.
+    std::unordered_map<std::string, int64_t> variable_values;
+    // If a variable values file is provided, parse it into the variable_values
+    // map.
+    if (argc == 4) {
+        std::ifstream variable_values_input(argv[3]);
+        if (!variable_values_input) {
+            std::cerr << "Error: could not open variable values file\n";
+            return 1;
+        }
+        variable_values = parse_variable_values_file(variable_values_input);
+    }
+
     // Evaluate the preorder stream directly and print the final result.
     try {
-        const int64_t result = eval_pre(ast_input);
+        const int64_t result = eval_pre(ast_input, variable_values);
 
         // Check for trailing garbage tokens after the full tree is read.
         if (std::string trailing; ast_input >> trailing) {
