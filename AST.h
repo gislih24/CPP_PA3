@@ -1,6 +1,7 @@
 #pragma once
 #include <cstdint>
 #include <memory>
+#include <stdexcept>
 #include <string>
 #include <vector>
 
@@ -10,11 +11,12 @@ class ASTException : public std::runtime_error {
     using runtime_error::runtime_error;
 };
 
-enum class NodeType { Number, Add, Sub, Mult };
+enum class NodeType { Number, Variable, Add, Sub, Mult };
 
 struct Node {
     NodeType type;
     int64_t value; // lets allow large integers cause why not
+    std::string variable_name;
     std::unique_ptr<Node> left;
     std::unique_ptr<Node> right;
 
@@ -35,6 +37,7 @@ struct Node {
     }
 
     explicit Node(int64_t v);
+    explicit Node(std::string variable);
     Node(NodeType t, std::unique_ptr<Node> l, std::unique_ptr<Node> r);
 };
 
@@ -52,6 +55,7 @@ enum class TokenType {
 struct Token {
     TokenType type;
     int64_t value;
+    std::string variable_name;
 };
 
 class AST {
