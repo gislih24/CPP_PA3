@@ -236,20 +236,6 @@ eval_pre(std::istream& input_stream,
     if (tokens.empty()) {
         throw ASTException("bad preorder");
     }
-    /*
-
-    // Variable token.
-    if (is_variable_token(parsed_token)) {
-        const auto variable_it = variable_values.find(parsed_token);
-        if (variable_it == variable_values.end()) {
-            throw ASTException("missing variable value: " + parsed_token);
-        }
-        return variable_it->second;
-    }
-
-    // Number token.
-    return parse_int64_token(parsed_token);
-    */
 
     std::vector<int64_t> values;
     values.reserve(tokens.size());
@@ -258,8 +244,6 @@ eval_pre(std::istream& input_stream,
         const std::string& tok = *it;
 
         if (tok == "+" || tok == "-" || tok == "*" || tok == "/") {
-            int64_t l = eval_pre(input_stream, variable_values);
-            int64_t r = eval_pre(input_stream, variable_values);
             if (values.size() < 2) {
                 throw ASTException("bad preorder");
             }
@@ -281,8 +265,16 @@ eval_pre(std::istream& input_stream,
                 }
                 values.push_back(left / right);
             }
+        } else if (is_variable_token(tok)) {
+            // Get the value of the variable in the variable_values map. If
+            // it's not found, throw an error.
+            const auto variable_it = variable_values.find(tok);
+            if (variable_it == variable_values.end()) {
+                throw ASTException("missing variable value: " + tok);
+            }
+            values.push_back(variable_it->second);
         } else {
-            values.push_back(std::stoll(tok));
+            values.push_back(parse_int64_token(tok));
         }
     }
 
