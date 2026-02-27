@@ -175,11 +175,18 @@ void handle_operator(TokenType op_token_type,
 // ---------------------------- Node constructors ----------------------------
 // Constructor for number nodes.
 Node::Node(int64_t v)
-    : type(NodeType::Number), value(v), left(nullptr), right(nullptr) {}
+    : type(NodeType::Number), value(v), variable_name(""), left(nullptr),
+      right(nullptr) {}
+
+// Constructor for variable nodes.
+Node::Node(std::string variable)
+    : type(NodeType::Variable), value(0), variable_name(std::move(variable)),
+      left(nullptr), right(nullptr) {}
 
 // Constructor for operator nodes.
 Node::Node(NodeType t, std::unique_ptr<Node> l, std::unique_ptr<Node> r)
-    : type(t), value(0), left(std::move(l)), right(std::move(r)) {}
+    : type(t), value(0), variable_name(""), left(std::move(l)),
+      right(std::move(r)) {}
 
 // MARK: AST
 // ----------------------------------- AST -----------------------------------
@@ -272,6 +279,12 @@ void AST::add_tokens_to_tree() {
         // If we have a number token, push it onto the value stack.
         if (current_token.type == TokenType::Number) {
             value_stack.push(std::make_unique<Node>(current_token.value));
+            continue;
+        }
+
+        if (current_token.type == TokenType::Variable) {
+            value_stack.push(
+                std::make_unique<Node>(current_token.variable_name));
             continue;
         }
 
