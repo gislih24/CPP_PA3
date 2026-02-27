@@ -16,7 +16,7 @@ namespace {
 
 // Usage of these functions will be defined by build/eval modes.
 void write_pre(const Node* current_node, std::ostream& output_stream);
-int64_t eval_pre(std::istream& input_stream);
+bool is_variable_token(const std::string& token);
 
 /**
  * @brief Read an entire input stream into a std::string.
@@ -237,7 +237,23 @@ int64_t eval_pre(std::istream& input_stream) {
     }
 
     // Number token.
-    return std::stoll(parsed_token);
+/**
+ * @brief Check if a token is a valid variable token, which consists of one or
+ * more lower-case letters.
+ * @param token The token string to check.
+ * @return True if the token is a valid variable token, false otherwise.
+ */
+bool is_variable_token(const std::string& token) {
+    if (token.empty()) {
+        return false;
+    }
+    // Return whether all characters in the token can be parsed as lowercase
+    // ASCII.
+    return std::ranges::all_of(token, [](char character) {
+        const auto curr_char = static_cast<unsigned char>(character);
+        return std::islower(curr_char);
+    });
+}
 }
 
 } // namespace
