@@ -148,9 +148,14 @@ void write_pre(const Node* n, std::ostream& out) {
 
     // Internal node: emit the operator token first (preorder), then recurse
     // into its child nodes.
-    char op = (n->type == NodeType::Add   ? '+'
-               : n->type == NodeType::Sub ? '-'
-                                          : '*');
+    char op;
+    if (n->type == NodeType::Add) {
+        op = '+';
+    } else if (n->type == NodeType::Sub) {
+        op = '-';
+    } else {
+        op = '*';
+    }
     out << op << ' ';
     write_pre(n->left.get(), out);
     write_pre(n->right.get(), out);
