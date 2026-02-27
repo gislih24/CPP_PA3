@@ -88,6 +88,30 @@ int64_t parse_number(const std::string& input_string, std::size_t& index) {
 }
 
 /**
+ * @brief Parses a lower-case ASCII variable name from the input string
+ * starting at the given index and advances the index to the first character
+ * after the variable.
+ * @param input_string The input string to parse from.
+ * @param index The index to start parsing from. Advanced past the variable.
+ * @return The parsed variable name.
+ */
+std::string parse_variable_name(const std::string& input_string,
+                                std::size_t& index) {
+    const std::size_t start_index = index;
+    while (index < input_string.size()) {
+        // If the current input character isn't a lowercase ASCII character,
+        // then break.
+        if (const auto curr_char =
+                static_cast<unsigned char>(input_string[index]);
+            !std::islower(curr_char)) {
+            break;
+        }
+        ++index;
+    }
+    return input_string.substr(start_index, index - start_index);
+}
+
+/**
  * @brief Pops the top operator from the operator stack, pops the top two
  * values from the value stack, applies the operator to the values, and pushes
  * the result back onto the value stack.
