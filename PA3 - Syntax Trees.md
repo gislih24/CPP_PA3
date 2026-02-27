@@ -67,9 +67,9 @@ For those who want to read up on technical details of this kind of parsing can l
 
 The following is a list of additional features that may be implemented to achieve a score above the base version’s 50%. The maximum grade attainable is 10. All additional features implemented must be listed in the README.
 
-- [ ] **Whitespace insensitive (5%):** 
-  - [ ] Your implementation can handle extra spaces, newlines, tabs, etc. in the input files.
-- [ ] **Modern C++ Tree (5%):** Your AST(Abstract Syntax Tree) is implemented as a literal tree, but uses no `new`/`delete` functionality (consider smart pointers).
+- [x] **Whitespace insensitive (5%):** 
+  - [x] Your implementation can handle extra spaces, newlines, tabs, etc. in the input files.
+- [x] **Modern C++ Tree (5%):** Your AST(Abstract Syntax Tree) is implemented as a literal tree, but uses no `new`/`delete` functionality (consider smart pointers).
   - “Literal tree” means you have a node class and they point to each other, meaning you could do things like splice together trees in $O(1)$ or $O(\log(n)$ and so forth.
   - This does not mean the AST file has to be written out as a tree, just the data structure in the program itself.
 - [ ] **Variables (15%):** The input can contain variables (tokens consisting of lower-case ASCII characters).
