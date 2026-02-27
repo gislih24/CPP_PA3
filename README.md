@@ -1,97 +1,77 @@
 # CPP_PA3
 
-## TODO for this README
-- [ ] Explain how to compile.
-- [ ] Explain our AST format clearly, how it is read and written.
-  - [ ] Mention that tokens are space-separated.
-  - [ ] Mention that operators are either `+`, `-`, or `*`
-  - [ ] Mention that numbers are decimal `int64_t`
-  - [ ] Provide an example input and output, e.g. `2+3*4` becomes `+ 2 * 3 4`
-- [ ] Mention extra features we implemented
-  - [ ] Mention that it's whitespace insensitive (we skip `isspace`)
-  - [ ] Mention that the tree is modern C++, since we use `unique_ptr` instead
-    of `new`/`delete`.
-  - [ ] 
+Expression parser/evaluator using an Abstract Syntax Tree (AST).
 
-## Summary
+## Build
 
-This project is an expression parser and evaluator using an Abstract Syntax Tree(AST). It generates an AST file from input equation and, in a seperate run, evaluates a solution for it.
+Run in `CPP_PA3/`:
 
-## OS assumptions
-
-linux is recommended
-compiler version g++ with C++20 is recommended
-no external libraries
-
-## How to run
-
-Compile:
 ```bash
 make
 ```
 
-Create a file called `input.txt` and write an equation to be parsed into a tree.
+This builds `bin/ast_program` with `g++ -std=c++20` and without using any
+external libraries.
 
-Build tree: 
+## Base Version
+
+### Part 1: Build an AST file from an expression
+
+```bash
+./bin/ast_program build <ast_output_file> [expression_input_file]
+```
+
+- If `expression_input_file` is not included, the expression is read from
+  `stdin`.
+- Input expressions support integers, variables (`[a-z]+`), parentheses, and
+  operators `+ - * /` (including unary minus).
+- Whitespace is ignored.
+
+Example:
+
 ```bash
 ./bin/ast_program build tree.txt input.txt
 ```
 
-Evaluate solution for syntax tree: 
+### Part 2: Evaluate an AST file
+
+```bash
+./bin/ast_program eval <ast_input_file> [variable_values_file]
+```
+
+- If the AST contains any variables, please pass a variable file with one
+  assignment per line, like: `name=value` (e.g. `x=7`, or `currentyear = 2026`,
+  etc.).
+
+Examples:
+
 ```bash
 ./bin/ast_program eval tree.txt
+./bin/ast_program eval tree.txt vars.txt # If the tree contains variables.
 ```
 
-Evaluate solution for syntax tree if you had any variables: 
-```bash
-./bin/ast_program eval tree.txt variables.txt
-```
+## AST file format (reading + writing)
 
-## Input formats
+ASTs are written and read as a space-separated preorder token stream:
 
-input.txt contains an equation consisting of integers and the operators: `+, -, *, /`, whitespace is ignored and parentheses allowed. additionally strings are considered variables in this equation.
+- A number leaf: a signed decimal `int64_t` (example: `-7`)
+- A variable leaf: a lowercase ASCII name (example: `x`, `value`)
+- An operator node: one of these operators: `+ - * /`, followed by a left
+  subtree then a right subtree.
 
-example: 
-```bash
-5 + (x * (-7)) + y
-```
+Examples:
 
-variables.txt allows defining variables to be used in evaluation of input.txt. each variable is to be defined in its own line.
+- `2+3*4` gives `+ 2 * 3 4`
+- `5 + (x * (-7)) + y` gives `+ + 5 * x -7 y`
 
-example: 
-```bash
-x = 10
-y = 5
-```
+## Implemented extra features
 
-variable names are lowercase ASCII letters, values are signed 64 bit integers
-
-## AST storage format
-
-tree.txt should store the tree in a recursive preorder format. Numbers and variables are literal tokens. Operators are `+ - * /`.
-
-example(for previous example of input):
-```bash
-+ + 5 * x -7 y
-```
-
-## Implemented features
-
-input is whitespace insensitive. 
-
-Our AST is a modern C++ tree, with `unique_ptr`
-
-Variables are implemented
-
-Extra operations implemented, unary/binary minus (`-`) and binary division (`/`)
-
-High speed approach implemented. AST is able to build end evaluate equations of around 1.000.000 characters within a second using single-pass tokenization
-
-## Complexity and performance
-
-Tokenization and tree construction are linear in input size, evaluation uses preorder processing
-
-## Error handling
-
-TODO
-
+- Whitespace-insensitive parsing.
+- Modern C++ literal tree (`std::unique_ptr`, no manual `new`/`delete`).
+- Variables + optional variable bindings file in eval mode.
+- Extra operations: binary minus, unary minus, binary division.
+- Efficient parsing/evaluation for very large inputs using linear-time
+  tokenizing + "shunting-yard algorithm"-style tree construction.
+- Error handling for common cases, like bad files, syntax errors, malformed
+  preorder, missing/duplicate variable assignments, missing variable values,
+  division by zero, and integer overflow.
