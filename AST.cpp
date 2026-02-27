@@ -8,8 +8,8 @@
 #include <string>
 #include <utility>
 
-// MARK: namespace
-namespace AST_Details {
+// MARK: AST_Helpers
+namespace AST_Helpers {
 
 class ASTException : public std::runtime_error {
   public:
@@ -151,7 +151,7 @@ void handle_operator(TokenType op_token_type,
     operator_stack.push(op_token_type);
 }
 
-} // namespace AST_Details
+} // namespace AST_Helpers
 
 // ---------------------------- Node constructors ----------------------------
 // Constructor for number nodes.
@@ -198,7 +198,7 @@ void AST::tokenize(const std::string& input_string) {
         // If it's a digit, we have a number, so we try to parse that, along
         // with the rest of the digits of this number.
         if (std::isdigit(input_char)) {
-            int64_t parsed_number = AST_Details::parse_number(input_string, i);
+            int64_t parsed_number = AST_Helpers::parse_number(input_string, i);
             tokens_.push_back(Token{TokenType::Number, parsed_number});
             continue;
         }
@@ -222,7 +222,7 @@ void AST::tokenize(const std::string& input_string) {
             type = TokenType::RParen;
             break;
         default:
-            throw AST_Details::ASTException("invalid character in expression");
+            throw AST_Helpers::ASTException("invalid character in expression");
         }
 
         // Push the operator token, with the value 0 (since it's an operator).
@@ -266,12 +266,12 @@ void AST::add_tokens_to_tree() {
             // 2 values of the value stack.
             while (!operator_stack.empty() &&
                    operator_stack.top() != TokenType::LParen) {
-                AST_Details::apply_top_operator(value_stack, operator_stack);
+                AST_Helpers::apply_top_operator(value_stack, operator_stack);
             }
             // If we run out of operators before finding a '(', then we have a
             // mismatched parentheses error.
             if (operator_stack.empty()) {
-                throw AST_Details::ASTException("mismatched ')'");
+                throw AST_Helpers::ASTException("mismatched ')'");
             }
             // Finally, pop the '(' from the operator stack and discard it.
             operator_stack.pop();
@@ -279,8 +279,8 @@ void AST::add_tokens_to_tree() {
         }
 
         // Handle the case if we have an arithmetic operator.
-        if (AST_Details::is_arithmetic_operator(current_token.type)) {
-            AST_Details::handle_operator(current_token.type, value_stack,
+        if (AST_Helpers::is_arithmetic_operator(current_token.type)) {
+            AST_Helpers::handle_operator(current_token.type, value_stack,
                                          operator_stack);
             continue;
         }
@@ -291,23 +291,23 @@ void AST::add_tokens_to_tree() {
 
         // If we have a token that's not a number, operator, or parentheses,
         // then we have an unexpected token error.
-        throw AST_Details::ASTException("unexpected token");
+        throw AST_Helpers::ASTException("unexpected token");
     }
 
     // While the operator stack isn't empty, apply the top operator to the top
     // 2 values of the value stack.
     while (!operator_stack.empty()) {
         if (operator_stack.top() == TokenType::LParen) {
-            throw AST_Details::ASTException("mismatched '('");
+            throw AST_Helpers::ASTException("mismatched '('");
         }
-        AST_Details::apply_top_operator(value_stack, operator_stack);
+        AST_Helpers::apply_top_operator(value_stack, operator_stack);
     }
 
     // At this point, the operator stack should be empty, and the value stack
     // should have exactly 1 value (the root of the AST). Otherwise, we have an
     // error.
     if (value_stack.size() != 1) {
-        throw AST_Details::ASTException("invalid expression");
+        throw AST_Helpers::ASTException("invalid expression");
     }
 
     // Set the root of the AST to the only value left on the value stack.
@@ -334,7 +334,7 @@ void AST::parse(const std::string& input_expression) {
  */
 int64_t AST::evaluate() {
     if (!root_) {
-        throw AST_Details::ASTException("tree is empty");
+        throw AST_Helpers::ASTException("tree is empty");
     }
     return root_->get_value();
 }
