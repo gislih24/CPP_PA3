@@ -20,27 +20,7 @@ struct Node {
     std::unique_ptr<Node> left;
     std::unique_ptr<Node> right;
 
-    int64_t get_value() {
-        if (type == NodeType::Number) {
-            return value;
-        } else if (type == NodeType::Variable) {
-            throw ASTException("cannot evaluate variable without bindings");
-        } else if (type == NodeType::Add) {
-            return left->get_value() + right->get_value();
-        } else if (type == NodeType::Sub) {
-            return left->get_value() - right->get_value();
-        } else if (type == NodeType::Mult) {
-            return left->get_value() * right->get_value();
-        } else if (type == NodeType::Div) {
-            const int64_t divisor = right->get_value();
-            if (divisor == 0) {
-                throw ASTException("division by zero");
-            }
-            return left->get_value() / divisor;
-        } else {
-            return 0;
-        }
-    }
+    int64_t get_value();
 
     explicit Node(int64_t v);
     explicit Node(std::string variable);
