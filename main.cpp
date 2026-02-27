@@ -228,7 +228,11 @@ void write_pre(const Node* current_node, std::ostream& output_stream) {
 int64_t
 eval_pre(std::istream& input_stream,
          const std::unordered_map<std::string, int64_t>& variable_values) {
+    // The current token we're processing in the stream.
     std::vector<std::string> tokens;
+    // Tokenize the input stream by reading space-separated tokens until EOF.
+    // The tokens vector will hold all the tokens in the input stream, which we
+    // will process in reverse order to evaluate the preorder expression.
     for (std::string token; input_stream >> token;) {
         tokens.push_back(token);
     }
@@ -237,22 +241,34 @@ eval_pre(std::istream& input_stream,
         throw ASTException("bad preorder");
     }
 
+    // The stack of values for evaluating the expression.
     std::vector<int64_t> values;
+    // Reserve space in the values vector to avoid repeated reallocations as we
+    // push values onto it. The maximum number of values we would need is equal
+    // to the number of tokens.
     values.reserve(tokens.size());
 
+    // Process the tokens in reverse order, since it's a preorder stream and we
+    // want to evaluate the operators after their operands.
     for (auto it = tokens.rbegin(); it != tokens.rend(); ++it) {
         const std::string& tok = *it;
 
+        // If the token is an operator.
         if (tok == "+" || tok == "-" || tok == "*" || tok == "/") {
+            // If we have fewer than 2 values on the stack, then we have a bad
+            // preorder error, since operators must have 2 operands.
             if (values.size() < 2) {
                 throw ASTException("bad preorder");
             }
 
+            // Pop the top 2 values from the stack.
             int64_t left = values.back();
             values.pop_back();
             int64_t right = values.back();
             values.pop_back();
 
+            // Apply the operator to the left and right values and push the
+            // result back onto the stack.
             if (tok == "+") {
                 values.push_back(left + right);
             } else if (tok == "-") {
@@ -278,12 +294,17 @@ eval_pre(std::istream& input_stream,
         }
     }
 
+    // After processing all the tokens, there should be exactly 1 value left on
+    // the stack, which is the final result of evaluating the preorder
+    // expression.
     if (values.size() != 1) {
         throw ASTException("bad preorder");
     }
 
+    // Return the final result.
     return values.back();
 }
+
 /**
  * @brief Check if a token is a valid variable token, which consists of one or
  * more lower-case letters.
@@ -340,6 +361,7 @@ int64_t parse_int64_token(const std::string& token) {
  */
 std::unordered_map<std::string, int64_t>
 parse_variable_values_file(std::istream& input_stream) {
+    // Helper lambda to trim leading/trailing whitespace from a string.
     auto trim = [](const std::string& text) {
         std::size_t start = 0;
         while (start < text.size()) {
@@ -362,34 +384,44 @@ parse_variable_values_file(std::istream& input_stream) {
         return text.substr(start, end - start);
     };
 
+    // The map to hold the parsed variable names and their corresponding
+    // integer values.
     std::unordered_map<std::string, int64_t> variable_values;
-    std::size_t line_number = 0;
-    std::string line;
+    std::size_t line_number = 0; // The current line number, for error handling.
+    std::string line; // The current line being read from the input stream.
 
+    // Read the lines in the input stream.
     while (std::getline(input_stream, line)) {
         ++line_number;
         const std::string trimmed_line = trim(line);
+        // If the line is empty or consists of only whitespace, skip it.
         if (trimmed_line.empty()) {
             continue;
         }
 
         const std::size_t equal_sign = trimmed_line.find('=');
+        // If there's no '=' character, or if there's more than one '=', then
+        // we have an invalid variable assignment error.
         if ((equal_sign == std::string::npos) ||
             (trimmed_line.find('=', equal_sign + 1) != std::string::npos)) {
             throw ASTException("invalid variable assignment on line " +
                                std::to_string(line_number));
         }
 
+        // Split the line into variable name and variable value parts, trimming
+        // whitespace from both parts.
         const std::string variable_name =
             trim(trimmed_line.substr(0, equal_sign));
         const std::string variable_value_text =
             trim(trimmed_line.substr(equal_sign + 1));
 
+        // Check that the variable name is valid (lower-case letters only).
         if (!is_variable_token(variable_name)) {
             throw ASTException("invalid variable name on line " +
                                std::to_string(line_number));
         }
 
+        // Parse the variable value as an integer and store it in the map.
         variable_values[variable_name] = parse_int64_token(variable_value_text);
     }
 
