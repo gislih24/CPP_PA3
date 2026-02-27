@@ -85,10 +85,10 @@ The following is a list of additional features that may be implemented to achiev
   - [ ] If you do more advanced simplifications than mentioned here, such as multiplying inside parentheses, dropping unnecessary parentheses, and more, it can be more than 10%.
 - [x] **Extra operations (10%):** Your program supports binary minus, binary division (rounds down like in C++), and unary minus.
   - [x] So, for example, “`(-3-12)/5`” should work.
-- [ ] **High speed (15%):** Both program parts run efficiently and can handle input sizes of above a million characters in around a second or so.
-  - [ ] The slow part that causes quadratic behaviour in the simpler implementation is scanning from left to right in linear time each time you want to parse the substring `l` to `r`.
-  - [ ] So you have to be able to find what to split on quickly, and find the matching closing paren to an opening paren quickly, and so forth.
-  - [ ] Something like using sets of indices with `lower_bound` might be useful.
+- [x] **High speed (15%):** Both program parts run efficiently and can handle input sizes of above a million characters in around a second or so.
+  - [x] The slow part that causes quadratic behaviour in the simpler implementation is scanning from left to right in linear time each time you want to parse the substring `l` to `r`.
+  - [x] So you have to be able to find what to split on quickly, and find the matching closing paren to an opening paren quickly, and so forth.
+  - [x] Something like using sets of indices with `lower_bound` might be useful.
 - [ ] **Error handling (~10%):** We have not covered error handling much yet, but if you gracefully catch some common errors, this can be 10% extra.
   - [ ] Things like “division by zero”, “missing variable in file”, “overflow”, “file does not exist with that name”, etc.
   - [ ] If you implement all these error handling cases, it is around 10%.
