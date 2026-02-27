@@ -180,6 +180,10 @@ void write_pre(const Node* current_node, std::ostream& output_stream) {
         output_stream << current_node->value << ' ';
         return;
     }
+    if (current_node->type == NodeType::Variable) {
+        output_stream << current_node->variable_name << ' ';
+        return;
+    }
 
     // Internal node: emit the operator token first (preorder), then recurse
     // into its child nodes.
