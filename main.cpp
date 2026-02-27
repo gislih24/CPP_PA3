@@ -5,6 +5,7 @@
 #include <fstream>
 #include <iostream>
 #include <iterator>
+#include <limits>
 #include <stdexcept>
 #include <string>
 #include <unordered_map>
@@ -24,6 +25,49 @@ std::unordered_map<std::string, int64_t>
 parse_variable_values_file(std::istream& input_stream);
 bool is_variable_token(const std::string& token);
 int64_t parse_int64_token(const std::string& token);
+
+/**
+ * @brief Checked arithmetic operations that throw an ASTException on overflow
+ * or other error conditions (such as division by zero).
+ *
+ * @param left The left operand of the operation.
+ * @param right The right operand of the operation.
+ * @return The result of the arithmetic operation if it does not overflow or
+ * have other error conditions.
+ */
+int64_t checked_add(int64_t left, int64_t right) {
+    int64_t result = 0;
+    if (__builtin_add_overflow(left, right, &result)) {
+        throw ASTException("overflow in addition");
+    }
+    return result;
+}
+
+int64_t checked_sub(int64_t left, int64_t right) {
+    int64_t result = 0;
+    if (__builtin_sub_overflow(left, right, &result)) {
+        throw ASTException("overflow in subtraction");
+    }
+    return result;
+}
+
+int64_t checked_mul(int64_t left, int64_t right) {
+    int64_t result = 0;
+    if (__builtin_mul_overflow(left, right, &result)) {
+        throw ASTException("overflow in multiplication");
+    }
+    return result;
+}
+
+int64_t checked_div(int64_t left, int64_t right) {
+    if (right == 0) {
+        throw ASTException("division by zero");
+    }
+    if (left == std::numeric_limits<int64_t>::min() && right == -1) {
+        throw ASTException("overflow in division");
+    }
+    return left / right;
+}
 
 /**
  * @brief Read an entire input stream into a std::string.
@@ -62,31 +106,38 @@ std::string read_all(std::istream& input_stream) {
  * @return Exit code (0 on success, non-zero on error).
  */
 int run_build_mode(int argc, char* argv[]) {
-    // Require explicit input/output files.
-    if (argc != 4) {
+    // Support:
+    //   <program> build <ast_output_file> <expression_input_file>
+    //   <program> build <ast_output_file>   (read expression from stdin)
+    if (argc != 3 && argc != 4) {
         std::cerr << "Usage: " << argv[0]
-                  << " build <ast_output_file> <expression_input_file>\n";
+                  << " build <ast_output_file> [expression_input_file]\n";
         return 1;
     }
 
-    // Read the expression text from the input file.
-    std::ifstream expression_file(argv[3]);
     // The expression string to hold the full content of the input file.
     std::string expression;
 
-    if (expression_file) {
+    if (argc == 4) {
+        // Read the expression text from the input file.
+        std::ifstream expression_file(argv[3]);
+        if (!expression_file) {
+            std::cerr << "Error: expression input file does not exist or "
+                         "cannot be opened: "
+                      << argv[3] << '\n';
+            return 1;
+        }
         expression = read_all(expression_file);
     } else {
-        // If it's missing, read from stdin:
-        std::cerr << "Warning: could not open expression input file '"
-                  << argv[3] << "', reading from stdin...\n";
+        // No expression file provided: read from stdin by contract.
         expression = read_all(std::cin);
     }
 
     // Open the target file that will hold the preorder AST.
     std::ofstream ast_output(argv[2]);
     if (!ast_output) {
-        std::cerr << "Error: could not open AST output file\n";
+        std::cerr << "Error: could not open AST output file: " << argv[2]
+                  << '\n';
         return 1;
     }
 
@@ -131,7 +182,9 @@ int run_eval_mode(int argc, char* argv[]) {
     // Open the input file containing the preorder AST token stream.
     std::ifstream ast_input(argv[2]);
     if (!ast_input) {
-        std::cerr << "Error: could not open AST input file\n";
+        std::cerr << "Error: AST input file does not exist or cannot be "
+                     "opened: "
+                  << argv[2] << '\n';
         return 1;
     }
 
@@ -142,7 +195,9 @@ int run_eval_mode(int argc, char* argv[]) {
     if (argc == 4) {
         std::ifstream variable_values_input(argv[3]);
         if (!variable_values_input) {
-            std::cerr << "Error: could not open variable values file\n";
+            std::cerr << "Error: variable values file does not exist or cannot "
+                         "be opened: "
+                      << argv[3] << '\n';
             return 1;
         }
         variable_values = parse_variable_values_file(variable_values_input);
@@ -270,16 +325,13 @@ eval_pre(std::istream& input_stream,
             // Apply the operator to the left and right values and push the
             // result back onto the stack.
             if (tok == "+") {
-                values.push_back(left + right);
+                values.push_back(checked_add(left, right));
             } else if (tok == "-") {
-                values.push_back(left - right);
+                values.push_back(checked_sub(left, right));
             } else if (tok == "*") {
-                values.push_back(left * right);
+                values.push_back(checked_mul(left, right));
             } else {
-                if (right == 0) {
-                    throw ASTException("division by zero");
-                }
-                values.push_back(left / right);
+                values.push_back(checked_div(left, right));
             }
         } else if (is_variable_token(tok)) {
             // Get the value of the variable in the variable_values map. If
@@ -341,6 +393,8 @@ int64_t parse_int64_token(const std::string& token) {
             throw ASTException("bad integer token: " + token);
         }
         return parsed_value;
+    } catch (const std::out_of_range&) {
+        throw ASTException("integer literal overflow: " + token);
     } catch (const std::exception&) {
         throw ASTException("bad integer token: " + token);
     }
@@ -421,6 +475,12 @@ parse_variable_values_file(std::istream& input_stream) {
                                std::to_string(line_number));
         }
 
+        if (variable_values.contains(variable_name)) {
+            throw ASTException("duplicate variable assignment for '" +
+                               variable_name + "' on line " +
+                               std::to_string(line_number));
+        }
+
         // Parse the variable value as an integer and store it in the map.
         variable_values[variable_name] = parse_int64_token(variable_value_text);
     }
@@ -453,7 +513,7 @@ int main(int argc, char* argv[]) {
             // modes.
             std::cerr << "Usage:\n"
                       << "  " << argv[0]
-                      << " build <ast_output_file> <expression_input_file>\n"
+                      << " build <ast_output_file> [expression_input_file]\n"
                       << "  " << argv[0]
                       << " eval <ast_input_file> [variable_values_file]\n";
             return 1;
