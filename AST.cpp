@@ -179,6 +179,7 @@ void AST::tokenize(const std::string& input_string) {
     // size_t is used here since it's a type that's guaranteed to be able to
     // represent the size of any object in memory.
     std::size_t i = 0;
+    bool expecting_operand = true;
     // Go through the characters of the string.
     while (i < input_string.size()) {
         // Convert the current character. unsigned char is used here for extra
@@ -190,11 +191,43 @@ void AST::tokenize(const std::string& input_string) {
             ++i;
             continue;
         }
+
+        // Handle unary minus by rewriting it to either a negative number
+        // token or to -1 * (...), depending on what follows.
+        if (input_string[i] == '-' && expecting_operand) {
+            std::size_t lookahead = i + 1;
+            while (lookahead < input_string.size() &&
+                   std::isspace(static_cast<unsigned char>(
+                       input_string[lookahead]))) {
+                ++lookahead;
+            }
+
+            // Case: -(digits...)  -> Number(-digits...)
+            if (lookahead < input_string.size() &&
+                std::isdigit(static_cast<unsigned char>(
+                    input_string[lookahead]))) {
+                i = lookahead;
+                int64_t parsed_number = parse_number(input_string, i);
+                tokens_.push_back(Token{TokenType::Number, -parsed_number});
+                expecting_operand = false;
+                continue;
+            }
+
+            // Case: -(...) (or another unary expression)
+            // Rewrite as: -1 * (...)
+            tokens_.push_back(Token{TokenType::Number, -1});
+            tokens_.push_back(Token{TokenType::Mult, 0});
+            ++i;
+            expecting_operand = true;
+            continue;
+        }
+
         // If it's a digit, we have a number, so we try to parse that, along
         // with the rest of the digits of this number.
         if (std::isdigit(input_char)) {
             int64_t parsed_number = parse_number(input_string, i);
             tokens_.push_back(Token{TokenType::Number, parsed_number});
+            expecting_operand = false;
             continue;
         }
 
@@ -223,6 +256,12 @@ void AST::tokenize(const std::string& input_string) {
         // Push the operator token, with the value 0 (since it's an operator).
         tokens_.push_back(Token{type, 0});
         ++i;
+
+        if (type == TokenType::RParen) {
+            expecting_operand = false;
+        } else {
+            expecting_operand = true;
+        }
     }
 
     tokens_.push_back(Token{TokenType::End, 0}); // Push the end token.
