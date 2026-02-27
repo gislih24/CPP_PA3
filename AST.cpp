@@ -19,6 +19,7 @@ namespace {
  */
 int get_precedence(TokenType t) {
     switch (t) {
+    case TokenType::Div:
     case TokenType::Mult:
         return 2;
     case TokenType::Plus:
@@ -42,6 +43,8 @@ NodeType token_type_to_node_type(TokenType t) {
         return NodeType::Sub;
     case TokenType::Mult:
         return NodeType::Mult;
+    case TokenType::Div:
+        return NodeType::Div;
     default:
         throw ASTException("unexpected operator token");
     }
@@ -54,7 +57,7 @@ NodeType token_type_to_node_type(TokenType t) {
  */
 bool is_arithmetic_operator(TokenType t) {
     return t == TokenType::Plus || t == TokenType::Minus ||
-           t == TokenType::Mult;
+           t == TokenType::Mult || t == TokenType::Div;
 }
 
 /**
@@ -242,6 +245,9 @@ void AST::tokenize(const std::string& input_string) {
             break;
         case '*':
             type = TokenType::Mult;
+            break;
+        case '/':
+            type = TokenType::Div;
             break;
         case '(':
             type = TokenType::LParen;

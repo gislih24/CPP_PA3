@@ -143,7 +143,7 @@ int run_eval_mode(int argc, char* argv[]) {
  * Format (space-separated tokens):
  * - Number node  -> <integer>
  * - Operator node-> <operator_symbol> <left-subtree> <right-subtree>
- *   where <operator_symbol> is one of +, -, *
+ *   where <operator_symbol> is one of +, -, *, /
  *
  * Example for 1 + 1:
  *   + 1 1
@@ -169,6 +169,8 @@ void write_pre(const Node* current_node, std::ostream& output_stream) {
         operator_symbol = '-';
     } else if (current_node->type == NodeType::Mult) {
         operator_symbol = '*';
+    } else if (current_node->type == NodeType::Div) {
+        operator_symbol = '/';
     } else {
         // IF it's not one of these, then we have a malformed AST.
         throw ASTException("malformed AST");
@@ -182,7 +184,7 @@ void write_pre(const Node* current_node, std::ostream& output_stream) {
  * @brief Evaluate a preorder token stream recursively.
  *
  * Reading rules:
- * - If the token is an operator (+, -, *), recursively read/evaluate two
+ * - If the token is an operator (+, -, *, /), recursively read/evaluate two
  *   operands.
  * - Otherwise the token is parsed as a signed integer literal.
  *
@@ -199,7 +201,8 @@ int64_t eval_pre(std::istream& input_stream) {
     }
 
     // Operator token: recursively evaluate left and right subexpressions.
-    if (parsed_token == "+" || parsed_token == "-" || parsed_token == "*") {
+    if (parsed_token == "+" || parsed_token == "-" || parsed_token == "*" ||
+        parsed_token == "/") {
         int64_t l = eval_pre(input_stream);
         int64_t r = eval_pre(input_stream);
         if (parsed_token == "+") {
@@ -207,6 +210,12 @@ int64_t eval_pre(std::istream& input_stream) {
         }
         if (parsed_token == "-") {
             return l - r;
+        }
+        if (parsed_token == "/") {
+            if (r == 0) {
+                throw ASTException("division by zero");
+            }
+            return l / r;
         }
         return l * r;
     }

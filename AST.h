@@ -10,7 +10,7 @@ class ASTException : public std::runtime_error {
     using runtime_error::runtime_error;
 };
 
-enum class NodeType { Number, Add, Sub, Mult };
+enum class NodeType { Number, Add, Sub, Mult, Div };
 
 struct Node {
     NodeType type;
@@ -27,6 +27,12 @@ struct Node {
             return left->get_value() - right->get_value();
         } else if (type == NodeType::Mult) {
             return left->get_value() * right->get_value();
+        } else if (type == NodeType::Div) {
+            const int64_t divisor = right->get_value();
+            if (divisor == 0) {
+                throw ASTException("division by zero");
+            }
+            return left->get_value() / divisor;
         } else {
             return 0;
         }
@@ -36,7 +42,7 @@ struct Node {
     Node(NodeType t, std::unique_ptr<Node> l, std::unique_ptr<Node> r);
 };
 
-enum class TokenType { Number, Plus, Minus, Mult, LParen, RParen, End };
+enum class TokenType { Number, Plus, Minus, Mult, Div, LParen, RParen, End };
 
 struct Token {
     TokenType type;
