@@ -5,8 +5,9 @@
 #include <iterator>
 #include <stdexcept>
 #include <string>
+#include <vector>
 
-// All helper functions are kept in a separate anonymous namespace to avoid
+// All h// er functions are kept in a separate anonymous namespace to avoid
 // cluttering the AST class with implementation details.
 // MARK: namespace
 namespace {
@@ -194,34 +195,53 @@ void write_pre(const Node* current_node, std::ostream& output_stream) {
  * @return Computed 64-bit integer value of the parsed subtree.
  */
 int64_t eval_pre(std::istream& input_stream) {
-    std::string parsed_token;
-    // Read the next token. If we fail to read, the input is malformed.
-    if (!(input_stream >> parsed_token)) {
+    std::vector<std::string> tokens;
+    for (std::string token; input_stream >> token;) {
+        tokens.push_back(token);
+    }
+
+    if (tokens.empty()) {
         throw ASTException("bad preorder");
     }
 
-    // Operator token: recursively evaluate left and right subexpressions.
-    if (parsed_token == "+" || parsed_token == "-" || parsed_token == "*" ||
-        parsed_token == "/") {
-        int64_t l = eval_pre(input_stream);
-        int64_t r = eval_pre(input_stream);
-        if (parsed_token == "+") {
-            return l + r;
-        }
-        if (parsed_token == "-") {
-            return l - r;
-        }
-        if (parsed_token == "/") {
-            if (r == 0) {
-                throw ASTException("division by zero");
+    std::vector<int64_t> values;
+    values.reserve(tokens.size());
+
+    for (auto it = tokens.rbegin(); it != tokens.rend(); ++it) {
+        const std::string& tok = *it;
+
+        if (tok == "+" || tok == "-" || tok == "*" || tok == "/") {
+            if (values.size() < 2) {
+                throw ASTException("bad preorder");
             }
-            return l / r;
+
+            int64_t left = values.back();
+            values.pop_back();
+            int64_t right = values.back();
+            values.pop_back();
+
+            if (tok == "+") {
+                values.push_back(left + right);
+            } else if (tok == "-") {
+                values.push_back(left - right);
+            } else if (tok == "*") {
+                values.push_back(left * right);
+            } else {
+                if (right == 0) {
+                    throw ASTException("division by zero");
+                }
+                values.push_back(left / right);
+            }
+        } else {
+            values.push_back(std::stoll(tok));
         }
-        return l * r;
     }
 
-    // Number token.
-    return std::stoll(parsed_token);
+    if (values.size() != 1) {
+        throw ASTException("bad preorder");
+    }
+
+    return values.back();
 }
 
 } // namespace
