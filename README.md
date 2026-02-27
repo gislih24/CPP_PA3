@@ -1,6 +1,17 @@
-just a how to run for now so I don't forget
+# CPP_PA3
 
-we can finish this makefile tomorrow(friday)
+## TODO for this README
+- [ ] Explain how to compile.
+- [ ] Explain our AST format clearly, how it is read and written.
+  - [ ] Mention that tokens are space-separated.
+  - [ ] Mention that operators are either `+`, `-`, or `*`
+  - [ ] Mention that numbers are decimal `int64_t`
+  - [ ] Provide an example input and output, e.g. `2+3*4` becomes `+ 2 * 3 4`
+- [ ] Mention extra features we implemented
+  - [ ] Mention that it's whitespace insensitive (we skip `isspace`)
+  - [ ] Mention that the tree is modern C++, since we use `unique_ptr` instead
+    of `new`/`delete`.
+  - [ ] 
 
 ## How to run
 

@@ -122,7 +122,14 @@ int run_eval_mode(int argc, char* argv[]) {
 
     // Evaluate the preorder stream directly and print the final result.
     try {
-        std::cout << eval_pre(ast_input) << '\n';
+        const int64_t result = eval_pre(ast_input);
+
+        // Check for trailing garbage tokens after the full tree is read.
+        if (std::string trailing; ast_input >> trailing) {
+            throw ASTException("trailing garbage in preorder");
+        }
+
+        std::cout << result << '\n';
     } catch (const std::exception& e) {
         std::cerr << "Error: " << e.what() << "\n";
         return 1;
@@ -205,14 +212,7 @@ int64_t eval_pre(std::istream& input_stream) {
     }
 
     // Number token.
-    int64_t result = std::stoll(parsed_token);
-
-    // Check for trailing garbage tokens after the full tree is read.
-    if (std::string trailing; input_stream >> trailing) {
-        throw ASTException("trailing garbage in preorder");
-    }
-
-    return result;
+    return std::stoll(parsed_token);
 }
 
 } // namespace

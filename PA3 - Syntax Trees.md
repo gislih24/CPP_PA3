@@ -97,16 +97,3 @@ The following is a list of additional features that may be implemented to achiev
 If you, for example, implement the program with variables, whitespace insensitivity, and it runs in linear time, then your total grade is 50% + 15% + 5% + 15% = 85%.
 
 Students with ideas for additional features not listed here are encouraged to contact the instructor via Piazza, Discord, or email for possible inclusion. Suggestions are welcome.
-
-
-
-
-```mermaid
-flowchart TD
-parent--left-->old_left.left
-parent--right-->new_node
-old_left--left-->old_left.left
-old_left--right-->old_left.right
-new_node--left-->old_left.right
-new_node--right-->old_right
-```
