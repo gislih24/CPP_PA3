@@ -61,11 +61,17 @@ int run_build_mode(int argc, char* argv[]) {
 
     // Read the expression text from the input file.
     std::ifstream expression_file(argv[3]);
-    if (!expression_file) {
-        std::cerr << "Error: could not open expression input file\n";
-        return 1;
+    // The expression string to hold the full content of the input file.
+    std::string expression;
+
+    if (expression_file) {
+        expression = read_all(expression_file);
+    } else {
+        // If it's missing, read from stdin:
+        std::cerr << "Warning: could not open expression input file '"
+                  << argv[3] << "', reading from stdin...\n";
+        expression = read_all(std::cin);
     }
-    const std::string expression = read_all(expression_file);
 
     // Open the target file that will hold the preorder AST.
     std::ofstream ast_output(argv[2]);
